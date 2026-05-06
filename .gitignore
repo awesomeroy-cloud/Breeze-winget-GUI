@@ -1,0 +1,43 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+# --- Rust/Tauri 产物 ---
+# 必须忽略：Rust 的编译目录，通常有几百 MB 甚至几个 GB
+src-tauri/target/
+# Tauri 自动生成的 Schema 文件
+src-tauri/gen/schemas/
+
+# --- 临时文件与私密信息 ---
+# 环境变量文件，防止泄露密钥
+.env
+.env.*
+# 你项目里出现的测试进度文件
+test_progress.txt
+# AI 辅助工具产生的隐藏配置
+.gemini/
+.antigravity/
+
+# --- 缓存 ---
+.parcel-cache
+.turbo
