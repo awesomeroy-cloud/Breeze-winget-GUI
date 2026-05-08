@@ -1,0 +1,46 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        run: npm install
+
+      - name: Build and release Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Breeze ${{ github.ref_name }}'
+          releaseBody: |
+            ## 🍃 Breeze ${{ github.ref_name }}
+
+            ### 下载安装
+            - **推荐**：下载 `.msi` 安装包，双击安装
+            - **备选**：下载 `-setup.exe` (NSIS 安装包)
+
+            ### 系统要求
+            - Windows 10/11 (x64)
+            - 需要已安装 [Winget](https://github.com/microsoft/winget-cli)
+          releaseDraft: false
+          prerelease: false
