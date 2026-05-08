@@ -22,6 +22,20 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Sync version from tag
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          Write-Host "Setting version to $version"
+          # Update tauri.conf.json
+          $tauri = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+          $tauri.version = $version
+          $tauri | ConvertTo-Json -Depth 10 | Set-Content src-tauri/tauri.conf.json
+          # Update package.json
+          $pkg = Get-Content package.json -Raw | ConvertFrom-Json
+          $pkg.version = $version
+          $pkg | ConvertTo-Json -Depth 10 | Set-Content package.json
+
       - name: Install frontend dependencies
         run: npm install
 
@@ -38,6 +52,10 @@ jobs:
             ### 下载安装
             - **推荐**：下载 `.msi` 安装包，双击安装
             - **备选**：下载 `-setup.exe` (NSIS 安装包)
+
+            ### ⚠️ Windows SmartScreen 提示
+            安装时如果弹出"Windows 已保护你的电脑"提示，请点击 **"更多信息"** → **"仍要运行"**。
+            这是因为安装包尚未进行代码签名，不影响软件安全性。
 
             ### 系统要求
             - Windows 10/11 (x64)
