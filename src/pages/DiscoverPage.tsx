@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import { Package, searchPackages, installPackage } from "../api";
 import PackageCard from "../components/PackageCard";
 import DetailPanel from "../components/DetailPanel";
+import RainbowProgressBar from "../components/RainbowProgressBar";
 
 import { GlobalState } from "../App";
 
@@ -168,7 +169,7 @@ export default function DiscoverPage({ addToast, globalState }: Props) {
                 const progress = globalState?.progresses[pkg.id] || 0;
                 return (
                   <div key={pkg.id} className="package-card-wrapper" style={{ position: "relative", overflow: "hidden", borderRadius: "var(--radius-lg)" }}>
-                    {isInstalling && <div className="rainbow-progress" style={{ width: `${progress}%` }}></div>}
+                    <RainbowProgressBar active={isInstalling} progress={progress} />
                     <PackageCard
                       pkg={pkg}
                       onClick={setSelectedPkg}

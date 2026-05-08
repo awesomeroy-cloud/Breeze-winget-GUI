@@ -1156,15 +1156,24 @@ body {
   top: 0;
   left: 0;
   width: 0%;
-  height: 4px;
-  background: linear-gradient(90deg, 
-    #00C6FF, #0072FF, #00C6FF
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    #ff0000 0%,
+    #ff8000 14%,
+    #ffff00 28%,
+    #00ff00 42%,
+    #00bfff 57%,
+    #4040ff 71%,
+    #8000ff 85%,
+    #ff0000 100%
   );
   background-size: 200% 100%;
-  animation: rainbow-scroll 2s linear infinite;
-  transition: width 0.3s ease;
-  z-index: 10;
-  border-radius: 4px;
+  animation: rainbow-scroll 1.5s linear infinite;
+  transition: width 0.5s ease;
+  z-index: 1;
+  opacity: 0.15;
+  pointer-events: none;
 }
 
 @keyframes rainbow-scroll {

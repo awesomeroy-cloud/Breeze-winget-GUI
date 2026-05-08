@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Package, checkUpgrades, upgradePackage, upgradeAll } from "../api";
 import PackageCard from "../components/PackageCard";
 import DetailPanel from "../components/DetailPanel";
+import RainbowProgressBar from "../components/RainbowProgressBar";
 
 import { GlobalState } from "../App";
 
@@ -112,7 +113,7 @@ export default function UpdatesPage({ addToast, onCountChange, globalState }: Pr
                 const progress = globalState.progresses[pkg.id] || 0;
                 return (
                   <div key={pkg.id} className="package-card-wrapper" style={{ position: "relative", overflow: "hidden", borderRadius: "var(--radius-lg)" }}>
-                    {isUpgrading && <div className="rainbow-progress" style={{ width: `${progress}%` }}></div>}
+                    <RainbowProgressBar active={isUpgrading} progress={progress} />
                     <PackageCard
                       pkg={pkg}
                       onClick={() => setSelectedPkg(pkg)}

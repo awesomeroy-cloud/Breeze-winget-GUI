@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Package, PackageDetail, showPackage, installPackage, uninstallPackage, upgradePackage, getPackageVersions } from "../api";
+import RainbowProgressBar from "./RainbowProgressBar";
 
 import { GlobalState } from "../App";
 
@@ -192,7 +193,7 @@ export default function DetailPanel({ pkg, onClose, addToast, onOperationComplet
 
             {operationStatus && (
               <div className={`operation-status ${operating ? "running" : operationStatus.includes("✓") ? "success" : "error"}`} style={{ position: "relative", overflow: "hidden" }}>
-                {operating && <div className="rainbow-progress" style={{ width: `${globalState?.progresses[pkg.id] || 0}%` }}></div>}
+                <RainbowProgressBar active={operating} progress={globalState?.progresses[pkg.id] || 0} />
                 {operating && <div className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />}
                 <span>{operationStatus}</span>
               </div>

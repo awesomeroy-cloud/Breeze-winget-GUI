@@ -458,20 +458,51 @@ async fn run_winget_with_progress(args: &[&str], app: &tauri::AppHandle, id: &st
                 
                 output_str.push_str(&decoded);
                 
-                let blocks = decoded.chars().filter(|&ch| ch == '█' || ch == '▒').count();
-                if blocks > 0 {
-                    let filled = decoded.chars().filter(|&ch| ch == '█').count();
-                    let progress = (filled as f64 / blocks as f64) * 100.0;
-                    let _ = app_handle.emit("download-progress", ProgressPayload {
-                        id: pkg_id.clone(),
-                        progress,
-                    });
-                } else if decoded.contains("安装") || decoded.contains("Installing") || decoded.contains("uninstall") || decoded.contains("卸载") {
-                    // When installation/uninstallation starts, set progress to 100%
-                    let _ = app_handle.emit("download-progress", ProgressPayload {
-                        id: pkg_id.clone(),
-                        progress: 100.0,
-                    });
+                // Method 1: Try to extract percentage from patterns like "██████████████████████████████  100%"
+                // or download progress like "32.0 MB / 64.0 MB" or just "XX%"
+                let mut progress_found = false;
+                
+                // Look for percentage pattern (e.g., "45%", "100%")
+                if let Some(pct_pos) = decoded.find('%') {
+                    // Walk backwards from '%' to find the number
+                    let before = &decoded[..pct_pos];
+                    let num_str: String = before.chars().rev()
+                        .take_while(|c| c.is_ascii_digit() || *c == '.')
+                        .collect::<String>()
+                        .chars().rev().collect();
+                    if let Ok(pct) = num_str.parse::<f64>() {
+                        if pct >= 0.0 && pct <= 100.0 {
+                            let _ = app_handle.emit("download-progress", ProgressPayload {
+                                id: pkg_id.clone(),
+                                progress: pct,
+                            });
+                            progress_found = true;
+                        }
+                    }
+                }
+                
+                // Method 2: Fallback to block character counting
+                if !progress_found {
+                    let blocks = decoded.chars().filter(|&ch| ch == '█' || ch == '▒').count();
+                    if blocks > 0 {
+                        let filled = decoded.chars().filter(|&ch| ch == '█').count();
+                        let progress = (filled as f64 / blocks as f64) * 100.0;
+                        let _ = app_handle.emit("download-progress", ProgressPayload {
+                            id: pkg_id.clone(),
+                            progress,
+                        });
+                        progress_found = true;
+                    }
+                }
+                
+                // Method 3: Detect installation/uninstallation phase
+                if !progress_found {
+                    if decoded.contains("安装") || decoded.contains("Installing") || decoded.contains("uninstall") || decoded.contains("卸载") {
+                        let _ = app_handle.emit("download-progress", ProgressPayload {
+                            id: pkg_id.clone(),
+                            progress: 100.0,
+                        });
+                    }
                 }
                 
                 line_buf.clear();
