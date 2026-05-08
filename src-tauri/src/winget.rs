@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::process::Stdio;
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use tauri::Emitter;
 
 #[cfg(windows)]
@@ -232,7 +232,6 @@ fn find_column_starts(header: &str) -> Vec<usize> {
                 i += 1;
             }
             // Skip whitespace between columns (need at least 2 spaces to be a separator)
-            let ws_start = i;
             let ws_visual_start = visual_pos;
             while i < chars.len() && chars[i].is_whitespace() {
                 visual_pos += 1; // space is width 1
@@ -258,13 +257,11 @@ fn extract_columns(line: &str, col_starts: &[usize]) -> Vec<String> {
     
     // Map visual positions to char indices for this line
     let mut visual_to_char = Vec::with_capacity(line.len() * 2);
-    let mut current_visual = 0;
     for (idx, &c) in chars.iter().enumerate() {
         let w = char_width(c);
         for _ in 0..w {
             visual_to_char.push(idx);
         }
-        current_visual += w;
     }
     // Add a terminator index
     visual_to_char.push(chars.len());
@@ -653,7 +650,11 @@ pub async fn install_winget_env() -> Result<OperationResult, String> {
             })
         } else {
             let err = String::from_utf8_lossy(&output.stderr).into_owned();
-            Err(format!("Install failed: {}", err))
+            Ok(OperationResult {
+                success: false,
+                message: format!("Install failed: {}", err),
+                output: String::from_utf8_lossy(&output.stdout).into_owned(),
+            })
         }
     })
     .await

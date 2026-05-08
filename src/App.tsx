@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect } from "react";
 import Sidebar from "./components/Sidebar";
 import DiscoverPage from "./pages/DiscoverPage";
 import InstalledPage from "./pages/InstalledPage";
@@ -45,12 +45,6 @@ function App() {
       setAppState("missing-winget");
     }
   };
-
-  const activeOperationsRef = useRef<Set<string>>(activeOperations);
-  
-  useEffect(() => {
-    activeOperationsRef.current = activeOperations;
-  }, [activeOperations]);
 
 
 

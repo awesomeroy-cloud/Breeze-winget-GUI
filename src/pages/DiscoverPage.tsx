@@ -88,6 +88,7 @@ export default function DiscoverPage({ addToast, globalState }: Props) {
         return next;
       });
       globalState?.removeOperation(pkg.id);
+      globalState?.refreshInstalled();
     }
   };
 
