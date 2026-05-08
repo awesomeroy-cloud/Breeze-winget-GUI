@@ -117,9 +117,12 @@ impl WingetSettings {
         if self.search_exact {
             args.push("--exact".to_string());
         }
+        // Default to winget source to avoid msstore connection timeouts
+        args.push("--source".to_string());
         if self.search_source != "default" {
-            args.push("--source".to_string());
             args.push(self.search_source.clone());
+        } else {
+            args.push("winget".to_string());
         }
         args
     }
