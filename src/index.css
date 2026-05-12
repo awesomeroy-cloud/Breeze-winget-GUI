@@ -467,14 +467,37 @@ body {
   border-color: var(--border-hover);
 }
 
+.btn-outline {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+
+.btn-outline:hover:not(:disabled) {
+  background: var(--bg-card-hover);
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+}
+
 .btn-danger {
   background: var(--danger-subtle);
   color: var(--danger);
   border-color: rgba(248, 113, 113, 0.2);
 }
 
-.btn-danger:hover {
+.btn-danger:hover:not(:disabled) {
   background: rgba(248, 113, 113, 0.2);
+}
+
+.btn-danger-solid {
+  background: var(--danger);
+  color: white;
+  box-shadow: 0 1px 4px rgba(239, 68, 68, 0.3);
+}
+
+.btn-danger-solid:hover:not(:disabled) {
+  filter: brightness(1.1);
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.4);
 }
 
 .btn-sm {
@@ -890,7 +913,7 @@ body {
 
 .package-list-header {
   display: grid;
-  grid-template-columns: 2fr 2fr 1fr 1fr 120px;
+  grid-template-columns: 2fr 2fr 1fr 1fr 180px;
   padding: 8px 16px;
   font-size: 11px;
   font-weight: 600;
@@ -902,7 +925,7 @@ body {
 
 .package-list-row {
   display: grid;
-  grid-template-columns: 2fr 2fr 1fr 1fr 120px;
+  grid-template-columns: 2fr 2fr 1fr 1fr 180px;
   padding: 10px 16px;
   align-items: center;
   border-radius: var(--radius-md);
@@ -1200,4 +1223,61 @@ body {
 .version-select:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* ===== Confirm Modal ===== */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: modalFadeIn 0.2s ease;
+}
+
+.confirm-modal {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+  animation: modalSlideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.confirm-modal h3 {
+  margin-top: 0;
+  margin-bottom: 12px;
+  font-size: 18px;
+  color: var(--text-primary);
+}
+
+.confirm-modal p {
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin-bottom: 24px;
+  line-height: 1.5;
+}
+
+.confirm-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+@keyframes modalFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modalSlideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
 }

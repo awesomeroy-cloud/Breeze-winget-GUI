@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Package } from "../api";
+import { Package, uninstallPackage } from "../api";
 import DetailPanel from "../components/DetailPanel";
 import { GlobalState } from "../App";
 
@@ -13,10 +13,30 @@ export default function InstalledPage({ addToast, globalState }: Props) {
   const packages = globalState?.installedPackages || [];
   const loading = packages.length === 0 && !filter;
   const [selectedPkg, setSelectedPkg] = useState<Package | null>(null);
+  const [confirmPkg, setConfirmPkg] = useState<Package | null>(null);
 
   const loadPackages = async () => {
     if (globalState?.refreshInstalled) {
       await globalState.refreshInstalled();
+    }
+  };
+
+  const handleUninstall = async (pkg: Package) => {
+    setConfirmPkg(null);
+    globalState?.addOperation(pkg.id);
+    
+    try {
+      const res = await uninstallPackage(pkg.id);
+      if (res.success) {
+        addToast(`${pkg.name} 已成功卸载`, "success");
+        await loadPackages();
+      } else {
+        addToast(`卸载失败: ${res.message}`, "error");
+      }
+    } catch (err) {
+      addToast(`发生错误: ${err}`, "error");
+    } finally {
+      globalState?.removeOperation(pkg.id);
     }
   };
 
@@ -94,31 +114,62 @@ export default function InstalledPage({ addToast, globalState }: Props) {
                   <span>来源</span>
                   <span>操作</span>
                 </div>
-                {filtered.map((pkg, i) => (
-                  <div
-                    key={`${pkg.id}-${i}`}
-                    className="package-list-row"
-                    onClick={() => setSelectedPkg(pkg)}
-                  >
-                    <span className="cell-name" title={pkg.name}>{pkg.name}</span>
-                    <span className="cell-id" title={pkg.id}>{pkg.id}</span>
-                    <span className="cell-version">{pkg.version}</span>
-                    <span className="cell-source">{pkg.source || "—"}</span>
-                    <span onClick={(e) => e.stopPropagation()}>
-                      <button
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => setSelectedPkg(pkg)}
-                      >
-                        详情
-                      </button>
-                    </span>
-                  </div>
-                ))}
+                {filtered.map((pkg, i) => {
+                  const operating = globalState?.activeOperations.has(pkg.id);
+                  return (
+                    <div
+                      key={`${pkg.id}-${i}`}
+                      className="package-list-row"
+                      onClick={() => setSelectedPkg(pkg)}
+                    >
+                      <span className="cell-name" title={pkg.name}>{pkg.name}</span>
+                      <span className="cell-id" title={pkg.id}>{pkg.id}</span>
+                      <span className="cell-version">{pkg.version}</span>
+                      <span className="cell-source">{pkg.source || "—"}</span>
+                      <span onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: 8 }}>
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => setSelectedPkg(pkg)}
+                        >
+                          详情
+                        </button>
+                        <button
+                          className="btn btn-outline btn-sm"
+                          style={{ color: "var(--danger)", borderColor: "rgba(248, 113, 113, 0.3)" }}
+                          disabled={operating}
+                          onClick={() => setConfirmPkg(pkg)}
+                        >
+                          {operating ? "操作中..." : "卸载"}
+                        </button>
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </>
         )}
       </div>
+
+      {confirmPkg && (
+        <div className="modal-overlay" onClick={() => setConfirmPkg(null)}>
+          <div className="confirm-modal" onClick={e => e.stopPropagation()}>
+            <h3>确认卸载？</h3>
+            <p>你确定要卸载 <strong>{confirmPkg.name}</strong> 吗？此操作将尝试静默清理所有关联文件。</p>
+            <div className="confirm-modal-actions">
+              <button className="btn btn-secondary" onClick={() => setConfirmPkg(null)}>
+                取消
+              </button>
+              <button 
+                className="btn btn-danger-solid" 
+                onClick={() => handleUninstall(confirmPkg)}
+              >
+                确定卸载
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {selectedPkg && (
         <DetailPanel

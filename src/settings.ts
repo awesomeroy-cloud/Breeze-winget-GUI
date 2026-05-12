@@ -32,7 +32,7 @@ export const DEFAULT_SETTINGS: WingetSettings = {
   upgrade_include_unknown: false,
   upgrade_force: false,
   uninstall_mode: "silent",
-  uninstall_purge: false,
+  uninstall_purge: true,
   search_count: 0,
   search_exact: false,
   search_source: "default",
