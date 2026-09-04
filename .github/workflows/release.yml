@@ -1,66 +1,156 @@
 name: Release
 
 on:
+  # 支持在 GitHub Actions 页面手动点击一键发版
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '发布版本号 (留空则自动使用当天年月日，格式如 2026.09.05)'
+        required: false
+        default: ''
+        type: string
+      prerelease:
+        description: '是否标记为预发布版本 (Pre-release)'
+        required: false
+        default: false
+        type: boolean
+
+  # 支持在本地或命令行推送形如 v2026.09.05 的 tag 时自动触发
   push:
     tags:
       - 'v*'
 
 jobs:
-  build:
+  release:
+    name: Build and Release
     runs-on: windows-latest
     permissions:
       contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: 'npm'
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Sync version from tag
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Compute CalVer and sync project versions
+        id: calver
         shell: pwsh
         run: |
-          $version = "${{ github.ref_name }}" -replace '^v', ''
-          Write-Host "Setting version to $version"
-          # Update tauri.conf.json
-          $tauri = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
-          $tauri.version = $version
-          $tauri | ConvertTo-Json -Depth 10 | Set-Content src-tauri/tauri.conf.json
-          # Update package.json
-          $pkg = Get-Content package.json -Raw | ConvertFrom-Json
-          $pkg.version = $version
-          $pkg | ConvertTo-Json -Depth 10 | Set-Content package.json
-          # Update Cargo.toml
-          (Get-Content src-tauri/Cargo.toml -Raw) -replace '(?m)^version = ".*"', "version = `"$version`"" | Set-Content src-tauri/Cargo.toml
+          # 1. 确定原始版本号
+          $inputVer = "${{ github.event.inputs.version }}".Trim()
+          $refName = "${{ github.ref_name }}".Trim()
+          $isTagTrigger = "${{ github.ref_type }}" -eq "tag"
 
-      - name: Install frontend dependencies
-        run: npm install
+          if ($inputVer -ne "") {
+              $rawVer = $inputVer -replace '^v', ''
+          } elseif ($isTagTrigger -and $refName -match '^v?(.*)') {
+              $rawVer = $matches[1]
+          } else {
+              # 默认采用当天年月日法 (例如 2026.09.05)
+              $rawVer = Get-Date -Format "yyyy.MM.dd"
+          }
+
+          $baseTag = if ($rawVer.StartsWith("v")) { $rawVer } else { "v$rawVer" }
+          $finalTag = $baseTag
+
+          # 如果是在手动触发时且未手动指定版本，若当天已存在相同 tag，自动添加构建序号 (.1, .2 ...)
+          if (-not $isTagTrigger -and $inputVer -eq "") {
+              git fetch --tags --force
+              $counter = 1
+              while (git tag -l $finalTag) {
+                  $finalTag = "$baseTag.$counter"
+                  $counter++
+              }
+          }
+
+          # 2. 计算符合 SemVer 规范的版本（Cargo / npm 不允许前导 0，如 2026.09.05 -> 2026.9.5）
+          $cleanVer = $finalTag -replace '^v', ''
+          $parts = $cleanVer.Split('.')
+          if ($parts.Length -ge 3) {
+              $major = [int]$parts[0]
+              $minor = [int]$parts[1]
+              $patch = [int]$parts[2]
+              $semver = "$major.$minor.$patch"
+              if ($parts.Length -gt 3) {
+                  $semver += "-" + ($parts[3..($parts.Length - 1)] -join '.')
+              }
+          } else {
+              $semver = $cleanVer
+          }
+
+          $todayReadable = Get-Date -Format "yyyy-MM-dd"
+          Write-Host "========================================"
+          Write-Host "Target Tag Name: $finalTag"
+          Write-Host "SemVer for Configs: $semver"
+          Write-Host "Release Date: $todayReadable"
+          Write-Host "========================================"
+
+          # 3. 同步版本至 package.json
+          $pkg = Get-Content package.json -Raw | ConvertFrom-Json
+          $pkg.version = $semver
+          $pkg | ConvertTo-Json -Depth 10 | Set-Content package.json -Encoding UTF8
+
+          # 4. 同步版本至 src-tauri/tauri.conf.json
+          $tauri = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+          $tauri.version = $semver
+          $tauri | ConvertTo-Json -Depth 10 | Set-Content src-tauri/tauri.conf.json -Encoding UTF8
+
+          # 5. 安全同步版本至 src-tauri/Cargo.toml (仅替换 package 下的首处 version)
+          $cargo = Get-Content src-tauri/Cargo.toml -Raw
+          $cargo = [regex]::Replace($cargo, '(?m)(?<=^version\s*=\s*")[^"]+', $semver, 1)
+          Set-Content src-tauri/Cargo.toml -Value $cargo -Encoding UTF8
+
+          # 6. 导出变量供后续步骤调用
+          echo "tag_name=$finalTag" >> $env:GITHUB_OUTPUT
+          echo "semver=$semver" >> $env:GITHUB_OUTPUT
+          echo "release_date=$todayReadable" >> $env:GITHUB_OUTPUT
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run frontend unit tests
+        run: npm test
+
+      - name: Run backend unit tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
 
       - name: Build and release Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'Breeze ${{ github.ref_name }}'
+          tagName: ${{ steps.calver.outputs.tag_name }}
+          releaseName: 'Breeze ${{ steps.calver.outputs.tag_name }}'
           releaseBody: |
-            ## 🍃 Breeze ${{ github.ref_name }}
+            ## 🍃 Breeze ${{ steps.calver.outputs.tag_name }}
 
-            ### 下载安装
-            - **推荐**：下载 `.msi` 安装包，双击安装
-            - **备选**：下载 `-setup.exe` (NSIS 安装包)
+            > 发布日期：${{ steps.calver.outputs.release_date }} | 基于 Windows Package Manager (Winget) 构建
+
+            ### 📦 下载安装
+            - **推荐下载**：下载下方 Assets 中的 **`Breeze_${{ steps.calver.outputs.semver }}_x64-setup.exe`**，双击运行即可自动安装并创建桌面快捷方式。
+
+            ---
 
             ### ⚠️ Windows SmartScreen 提示
-            安装时如果弹出"Windows 已保护你的电脑"提示，请点击 **"更多信息"** → **"仍要运行"**。
-            这是因为安装包尚未进行代码签名，不影响软件安全性。
+            若 Windows 弹出“Windows 已保护你的电脑”拦截提示，请点击 **“更多信息”** → **“仍要运行”** 即可正常安装（因个人开源软件未购买商业代码签名证书，绝无任何安全隐患）。
 
-            ### 系统要求
-            - Windows 10/11 (x64)
-            - 需要已安装 [Winget](https://github.com/microsoft/winget-cli)
+            ### 💻 环境要求
+            - **操作系统**：Windows 10 / Windows 11 (64 位)
+            - **核心组件**：系统内置或已安装 [winget](https://github.com/microsoft/winget-cli)（若未安装，Breeze 启动时亦支持一键自愈部署）
           releaseDraft: false
-          prerelease: false
+          prerelease: ${{ github.event.inputs.prerelease == 'true' }}
