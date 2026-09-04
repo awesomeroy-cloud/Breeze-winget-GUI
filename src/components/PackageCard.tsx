@@ -40,8 +40,12 @@ export default function PackageCard({ pkg, onClick, actionButton, showUpgrade }:
       </div>
 
       <div className="package-meta">
-        <span className="package-version">v{pkg.version}</span>
-        {showUpgrade && pkg.available && (
+        <span className="package-version">
+          {pkg.version && pkg.version !== "-" && pkg.version.toLowerCase() !== "unknown"
+            ? `v${pkg.version}`
+            : "未知版本"}
+        </span>
+        {showUpgrade && pkg.available && pkg.available !== "-" && (
           <span className="package-upgrade-badge">→ {pkg.available}</span>
         )}
         {pkg.source && <span className="package-source">{pkg.source}</span>}

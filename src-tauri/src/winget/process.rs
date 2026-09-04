@@ -73,19 +73,110 @@ pub fn format_command_failure(command: &str, args: &[String], output: &CommandOu
     }
 }
 
+/// Subcommands that accept `--accept-source-agreements`.
+const SOURCE_AGREEMENT_CMDS: &[&str] = &["search", "install", "upgrade", "list"];
+
+/// Resolves the winget executable path.
+///
+/// Search order: `PATH`, `%LOCALAPPDATA%\Microsoft\WindowsApps\winget.exe`, then `where.exe winget`.
+pub fn resolve_winget_path() -> String {
+    let path_sep = if cfg!(windows) { ';' } else { ':' };
+    if let Ok(path_var) = std::env::var("PATH") {
+        for dir in path_var.split(path_sep) {
+            let candidate = std::path::Path::new(dir).join(if cfg!(windows) {
+                "winget.exe"
+            } else {
+                "winget"
+            });
+            if candidate.exists() {
+                return candidate.to_string_lossy().into_owned();
+            }
+        }
+    }
+
+    if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+        let alias_path = std::path::PathBuf::from(local_app_data)
+            .join("Microsoft")
+            .join("WindowsApps")
+            .join("winget.exe");
+        if alias_path.exists() {
+            return alias_path.to_string_lossy().into_owned();
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        let mut cmd = std::process::Command::new("where.exe");
+        cmd.arg("winget");
+        cmd.creation_flags(CREATE_NO_WINDOW);
+        if let Ok(output) = cmd.output() {
+            if output.status.success() {
+                let text = decode_command_bytes(&output.stdout);
+                if let Some(line) = text.lines().map(str::trim).find(|l| !l.is_empty()) {
+                    return line.to_string();
+                }
+            }
+        }
+    }
+
+    "winget".to_string()
+}
+
+/// Resolves the winget executable, searching PATH and standard AppExecutionAlias locations.
+pub fn get_winget_cmd() -> std::process::Command {
+    std::process::Command::new(resolve_winget_path())
+}
+
+/// Filters and injects global winget flags based on the subcommand.
+///
+/// Root flags such as `--version` never receive subcommand-only arguments.
+/// `--accept-source-agreements` is only attached to `search`, `install`, `upgrade`, and `list`.
+pub fn sanitize_winget_args(args: &[String]) -> Vec<String> {
+    let first = args.first().map(|s| s.as_str()).unwrap_or("");
+    let is_root_flag = first.starts_with('-') || first.is_empty();
+
+    let mut out: Vec<String> = args
+        .iter()
+        .filter(|a| {
+            if *a == "--accept-source-agreements" {
+                !is_root_flag && SOURCE_AGREEMENT_CMDS.contains(&first)
+            } else if *a == "--disable-interactivity" {
+                !is_root_flag
+            } else {
+                true
+            }
+        })
+        .cloned()
+        .collect();
+
+    if !is_root_flag {
+        if !out.iter().any(|a| a == "--disable-interactivity") {
+            out.push("--disable-interactivity".to_string());
+        }
+        if SOURCE_AGREEMENT_CMDS.contains(&first)
+            && !out.iter().any(|a| a == "--accept-source-agreements")
+        {
+            out.push("--accept-source-agreements".to_string());
+        }
+    }
+
+    out
+}
+
 /// Executes a `winget` CLI command synchronously inside a blocking thread pool task,
 /// capturing stdout, stderr, and exit status without opening a console window.
 ///
 /// Global non-interactive flags (`--accept-source-agreements`, `--disable-interactivity`)
-/// are appended automatically to ensure the process never blocks on interactive user prompts.
+/// are appended automatically only to supported subcommands.
 pub async fn run_winget_output(args: &[&str]) -> Result<CommandOutput, String> {
     let args_owned: Vec<String> = args.iter().map(|s| s.to_string()).collect();
 
     tokio::task::spawn_blocking(move || {
-        let mut cmd = std::process::Command::new("winget");
-        cmd.args(&args_owned)
-            .args(["--accept-source-agreements", "--disable-interactivity"])
-            .stdout(Stdio::piped())
+        let mut cmd = get_winget_cmd();
+        let sanitized = sanitize_winget_args(&args_owned);
+        cmd.args(&sanitized);
+
+        cmd.stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
         #[cfg(windows)]

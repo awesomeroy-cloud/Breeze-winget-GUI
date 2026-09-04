@@ -1,5 +1,4 @@
-import { useState, useEffect } from "react";
-import { getWingetVersion } from "../api";
+import { useState } from "react";
 import { WingetSettings, loadSettings, saveSettings, DEFAULT_SETTINGS } from "../settings";
 
 /**
@@ -12,25 +11,21 @@ import { WingetSettings, loadSettings, saveSettings, DEFAULT_SETTINGS } from "..
  * installation mode, scopes, architecture, purge heuristics, and repository sources.
  */
 export default function SettingsPage() {
-  const [wingetVer, setWingetVer] = useState("检测中...");
-  const [settings, setSettings] = useState<WingetSettings>(loadSettings);
+  const [settings, setSettings] = useState<WingetSettings>(() => ({
+    ...DEFAULT_SETTINGS,
+    ...loadSettings(),
+  }));
   const [saved, setSaved] = useState(false);
 
-  useEffect(() => {
-    getWingetVersion()
-      .then(setWingetVer)
-      .catch(() => setWingetVer("未检测到"));
-  }, []);
-
-  const update = <K extends keyof WingetSettings>(key: K, value: WingetSettings[K]) => {
-    setSettings(prev => {
-      const next = { ...prev, [key]: value };
+  function update<K extends keyof WingetSettings>(key: K, value: WingetSettings[K]) {
+    setSettings((prev) => {
+      const next = { ...DEFAULT_SETTINGS, ...prev, [key]: value };
       saveSettings(next);
       setSaved(true);
-      setTimeout(() => setSaved(false), 1500);
+      window.setTimeout(() => setSaved(false), 1500);
       return next;
     });
-  };
+  }
 
   const resetAll = () => {
     setSettings({ ...DEFAULT_SETTINGS });
@@ -265,27 +260,10 @@ export default function SettingsPage() {
               value={settings.search_source}
               onChange={e => update("search_source", e.target.value as WingetSettings["search_source"])}
             >
-              <option value="default">全部</option>
+              <option value="default">winget（默认，避免商店超时）</option>
               <option value="winget">winget</option>
               <option value="msstore">Microsoft Store</option>
             </select>
-          </div>
-        </div>
-
-        {/* About */}
-        <div className="settings-group">
-          <h3>关于 Breeze</h3>
-          <div className="settings-row">
-            <span className="settings-label">版本</span>
-            <span className="settings-value">0.1.1 (Phase 2)</span>
-          </div>
-          <div className="settings-row">
-            <span className="settings-label">winget 版本</span>
-            <span className="settings-value">{wingetVer}</span>
-          </div>
-          <div className="settings-row">
-            <span className="settings-label">框架</span>
-            <span className="settings-value">Tauri v2 + React</span>
           </div>
         </div>
 

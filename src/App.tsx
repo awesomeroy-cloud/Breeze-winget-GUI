@@ -23,20 +23,26 @@ export type { Page };
 function AppShell() {
   const [currentPage, setCurrentPage] = useState<Page>("discover");
   const [appState, setAppState] = useState<"loading" | "missing-winget" | "ready">("loading");
-  const { refreshInstalled } = usePackages();
+  const { refreshInstalled, refreshUpgrades } = usePackages();
 
   const checkWinget = useCallback(async () => {
     try {
       setAppState("loading");
       await getWingetVersion();
       setAppState("ready");
-      // Background load installed software as soon as winget environment is verified
-      await refreshInstalled();
     } catch (e) {
       console.error("Winget not found on host system:", e);
       setAppState("missing-winget");
+      return;
     }
-  }, [refreshInstalled]);
+    // Isolated from startup: a list refresh failure must not bounce back to InitPage
+    refreshInstalled().catch((err) => {
+      console.error("Failed to preload installed packages:", err);
+    });
+    refreshUpgrades().catch((err) => {
+      console.error("Failed to preload upgrades:", err);
+    });
+  }, [refreshInstalled, refreshUpgrades]);
 
   useEffect(() => {
     checkWinget();
@@ -52,6 +58,8 @@ function AppShell() {
         return <UpdatesPage />;
       case "settings":
         return <SettingsPage />;
+      default:
+        return <DiscoverPage />;
     }
   };
 

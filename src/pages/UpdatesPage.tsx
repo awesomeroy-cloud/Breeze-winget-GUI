@@ -16,12 +16,13 @@ import { useToast, usePackages, useOperations } from "../context";
  */
 export default function UpdatesPage() {
   const { addToast } = useToast();
-  const { setUpgradeCount, refreshInstalled } = usePackages();
-  const { activeOperations, addOperation, removeOperation, isOperating, progresses } = useOperations();
+  const { setUpgradeCount, refreshInstalled, refreshUpgrades } = usePackages();
+  const { addOperation, removeOperation, isOperating, progresses } = useOperations();
 
   const [packages, setPackages] = useState<Package[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPkg, setSelectedPkg] = useState<Package | null>(null);
+  const [upgradingAll, setUpgradingAll] = useState(false);
 
   const loadUpgrades = async () => {
     setLoading(true);
@@ -52,6 +53,7 @@ export default function UpdatesPage() {
           return next;
         });
         await refreshInstalled();
+        await refreshUpgrades();
       } else {
         addToast(`${pkg.name} 更新失败`, "error");
       }
@@ -63,22 +65,24 @@ export default function UpdatesPage() {
   };
 
   const handleUpgradeAll = async () => {
-    packages.forEach((pkg) => addOperation(pkg.id));
+    setUpgradingAll(true);
     try {
       const result = await upgradeAll();
       if (result.success) {
         addToast("所有软件已更新", "success");
         setPackages([]);
         setUpgradeCount(0);
-        await refreshInstalled();
       } else {
         addToast("部分软件更新可能失败", "warning");
         await loadUpgrades();
       }
     } catch (err) {
       addToast(`全部更新出错: ${err}`, "error");
+      await loadUpgrades();
     } finally {
-      packages.forEach((pkg) => removeOperation(pkg.id));
+      setUpgradingAll(false);
+      await refreshInstalled();
+      await refreshUpgrades();
     }
   };
 
@@ -90,10 +94,10 @@ export default function UpdatesPage() {
           <button
             className="btn btn-primary"
             onClick={handleUpgradeAll}
-            disabled={activeOperations.size > 0 || packages.length === 0}
+            disabled={upgradingAll || packages.length === 0}
             type="button"
           >
-            {activeOperations.size > 0 ? "全部更新中..." : "🚀 全部一键更新"}
+            {upgradingAll ? "全部更新中..." : "🚀 全部一键更新"}
           </button>
         </div>
       </div>
@@ -129,8 +133,8 @@ export default function UpdatesPage() {
 
             <div className="package-grid">
               {packages.map((pkg) => {
-                const isUpgrading = isOperating(pkg.id);
-                const progress = progresses[pkg.id] || 0;
+                const progress = progresses[pkg.id] ?? 0;
+                const isUpgrading = isOperating(pkg.id) || (upgradingAll && pkg.id in progresses);
                 return (
                   <div
                     key={pkg.id}
@@ -149,11 +153,15 @@ export default function UpdatesPage() {
                       actionButton={
                         <button
                           className="btn btn-primary btn-sm"
-                          disabled={isUpgrading || (activeOperations.size > 0 && !isUpgrading)}
+                          disabled={isUpgrading || upgradingAll}
                           onClick={() => handleUpgrade(pkg)}
                           type="button"
                         >
-                          {isUpgrading ? "更新中..." : `更新到 ${pkg.available}`}
+                          {isUpgrading
+                            ? progress > 0
+                              ? `${Math.round(progress)}%`
+                              : "更新中..."
+                            : `更新到 ${pkg.available}`}
                         </button>
                       }
                     />

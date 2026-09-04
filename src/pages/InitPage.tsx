@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { installWingetEnv } from "../api";
 
 /**
@@ -21,6 +21,32 @@ export interface InitPageProps {
 export default function InitPage({ onReady }: InitPageProps) {
   const [installing, setInstalling] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState(0);
+  const [stage, setStage] = useState("");
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !(window as any).__TAURI_INTERNALS__) return;
+
+    let unlisten: (() => void) | undefined;
+    async function setupListener() {
+      try {
+        const { listen } = await import("@tauri-apps/api/event");
+        unlisten = await listen<{ phase: string; progress: number; message: string }>(
+          "env-install-progress",
+          (event) => {
+            setProgress(event.payload.progress);
+            setStage(event.payload.message);
+          }
+        );
+      } catch (err) {
+        console.error("Failed to mount env-install-progress listener:", err);
+      }
+    }
+    setupListener();
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, []);
 
   const handleInstall = async () => {
     setInstalling(true);
@@ -111,9 +137,30 @@ export default function InitPage({ onReady }: InitPageProps) {
       </button>
 
       {installing && (
-        <p style={{ marginTop: "16px", fontSize: "13px", color: "var(--text-tertiary)" }}>
-          正在从微软官方下载最新的安装包，请耐心等待...
-        </p>
+        <div style={{ marginTop: 24, width: "min(400px, 90vw)" }}>
+          <div
+            style={{
+              height: 8,
+              borderRadius: 999,
+              background: "var(--bg-muted, rgba(255,255,255,0.08))",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                height: "100%",
+                width: `${Math.max(4, Math.min(100, progress))}%`,
+                borderRadius: 999,
+                background: "linear-gradient(90deg, var(--accent), #a78bfa, #22d3ee)",
+                transition: "width 0.3s ease",
+              }}
+            />
+          </div>
+          <p style={{ marginTop: "12px", fontSize: "13px", color: "var(--text-tertiary)" }}>
+            {stage || "正在从微软官方下载最新的安装包，请耐心等待..."}
+            {progress > 0 ? ` (${Math.round(progress)}%)` : ""}
+          </p>
+        </div>
       )}
     </div>
   );

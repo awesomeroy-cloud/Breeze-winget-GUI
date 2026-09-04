@@ -15,15 +15,16 @@ import { useToast, usePackages, useOperations } from "../context";
  */
 export default function InstalledPage() {
   const { addToast } = useToast();
-  const { installedPackages, refreshInstalled } = usePackages();
+  const { installedPackages, installedLoaded, refreshInstalled } = usePackages();
   const { addOperation, removeOperation, isOperating } = useOperations();
 
   const [filter, setFilter] = useState("");
   const [selectedPkg, setSelectedPkg] = useState<Package | null>(null);
   const [confirmPkg, setConfirmPkg] = useState<Package | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const packages = installedPackages;
-  const loading = packages.length === 0 && !filter;
+  const loading = !installedLoaded;
 
   const handleUninstall = async (pkg: Package) => {
     setConfirmPkg(null);
@@ -72,11 +73,18 @@ export default function InstalledPage() {
         <div className="header-actions">
           <button
             className="btn btn-secondary btn-sm"
-            onClick={refreshInstalled}
-            disabled={loading}
+            onClick={async () => {
+              setRefreshing(true);
+              try {
+                await refreshInstalled();
+              } finally {
+                setRefreshing(false);
+              }
+            }}
+            disabled={loading || refreshing}
             type="button"
           >
-            {loading ? "刷新中..." : "🔃 刷新"}
+            {loading || refreshing ? "刷新中..." : "🔃 刷新"}
           </button>
         </div>
       </div>

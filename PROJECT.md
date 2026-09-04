@@ -1,71 +1,54 @@
-# Project: Breeze (winget-GUI) Refactoring
+# Project: Breeze (winget-GUI) Detection, Initialization & Update Pipeline Fixes
 
 ## Architecture
-Breeze is a modern Windows package manager GUI built on Tauri (v2) with a Rust backend (`src-tauri`) and a React 19 + TypeScript + Vite frontend (`src/`).
-- **Backend**: Invokes the Windows `winget` CLI, parses tabular output, monitors download/install progress via stream reading, and exposes 11 IPC commands to the frontend.
-- **Frontend**: Single-page application communicating exclusively through `src/api.ts` with Tauri IPC, providing search, installation, upgrade management, and settings configuration.
+Breeze is a Windows package manager GUI built on Tauri (v2) with a Rust backend (`src-tauri`) and a React 19 + TypeScript + Vite frontend (`src/`).
+- **Backend**: Invokes the Windows `winget` CLI, resolves binary paths across standard and restricted environments, sanitizes CLI parameters per subcommand, parses tabular output into structured domain models, and exposes Tauri IPC commands.
+- **Frontend**: Single-page React application consuming Tauri IPC via `src/api.ts` and React context providers (`PackageContext`, `ToastContext`), managing package installation, upgrade, uninstallation, and initial environment readiness.
 
 ## Feature Inventory
 | # | Feature | Description | Milestone | Source |
 |---|---------|-------------|-----------|--------|
-| 1 | Rust Module Decomposition | Split monolithic `winget.rs` (887 lines) into `types.rs`, `process.rs`, `parser.rs`, `progress.rs`, `commands.rs` with facade `mod.rs` | M1 | Survey (R1) |
-| 2 | Rust Technical Nuance Rustdoc | Comprehensive `///` documentation for Win32 `CREATE_NO_WINDOW`, dual GBK/UTF-8 decoding, CJK `char_width`, CR streaming, stderr deadlock thread, 3-tier uninstall fallback | M1 | Survey (R1) |
-| 3 | Rust Quality & Lints | Fix 7 Clippy warnings in backend and expand unit tests for width/parsing/heuristics | M1 | Survey (R1, R3) |
-| 4 | Frontend Domain Types & Constants | Centralize types in `src/types/` and constants in `src/constants/` | M2 | Survey (R2) |
-| 5 | Shared Utilities & Components | Extract `icon.ts`, `clipboard.ts`, and reusable `ConfirmModal` | M2 | Survey (R2) |
-| 6 | React Context & Hooks | Introduce `ToastContext` and `PackageContext` (`useToast`, `usePackages`, `useOperations`), eliminating `globalState` prop-drilling | M2 | Survey (R2) |
-| 7 | Frontend Page Refactoring | Refactor `DiscoverPage`, `InstalledPage`, `UpdatesPage`, `Sidebar`, and `DetailPanel` to consume context hooks with 0 prop-drilling | M2 | Survey (R2) |
-| 8 | Comprehensive JSDoc | Document all exported interfaces, types, functions, and components with JSDoc | M2 | Survey (R2) |
-| 9 | IPC Compatibility & Contract Verification | Ensure 100% backward compatibility for all 11 Tauri IPC commands, `"download-progress"` stream event, and `WingetSettings` snake_case serialization | M3 | Survey (R3) |
-| 10 | Regression & Build Integrity | Ensure zero cargo test failures, zero vitest failures (7/7+ tests), and zero TypeScript/Vite build errors | M3 | Survey (R3) |
+| 1 | Robust Winget CLI Detection & Root Flag Sanitization | Call `winget --version` without `--accept-source-agreements`; sanitize arguments so root commands never receive subcommand-only flags | M1 | Survey (R1) |
+| 2 | Multi-Tier Binary Path Resolution | Implement `resolve_winget_path()` checking `PATH`, `%LOCALAPPDATA%\Microsoft\WindowsApps\winget.exe`, and `where.exe winget` | M1 | Survey (R1) |
+| 3 | Strict Subcommand Argument Filtering | Implement `sanitize_winget_args()` strictly restricting `--accept-source-agreements` to `search`, `install`, `upgrade`, `list` | M1 | Survey (R1) |
+| 4 | Upgrade Table Parser & Ghost Package Elimination | Fix `parser.rs` to filter winget advisory footers (`--include-unknown`, `无法确定`, `cannot be determined`) and require valid `available` version in `check_upgrades()` | M1 | Survey (R3) |
+| 5 | Direct Startup to Main Interface | Fix `checkWinget` in `App.tsx` to transition immediately to `"ready"` on winget detection and isolate `refreshInstalled()` into independent error boundary | M2 | Survey (R2) |
+| 6 | Environment Installer Streaming Feedback | Add `app: tauri::AppHandle` to `install_winget_env`, stream download/install progress via `"env-install-progress"` events, and render live progress bar in `InitPage.tsx` | M2 | Survey (R2) |
+| 7 | Update Lifecycle & Installed List Cache Synchronization | Ensure `UpdatesPage.tsx` `handleUpgradeAll` calls `await refreshInstalled()` on all branches (including partial failure), and guard unversioned packages in `PackageCard.tsx` | M2 | Survey (R3) |
+| 8 | Regression Test Integrity & Forensic Audit | Maintain 100% passing tests (`cargo test`, `npx vitest run`, `npm run build`), verify edge cases with Challengers, and pass Forensic Integrity Audit | M3 | Acceptance Criteria |
 
 ## Milestones
 | # | Name | Scope | Dependencies | Status |
 |---|------|-------|-------------|--------|
-| 1 | M1: Backend Modularization & Documentation | Refactor `src-tauri/src/winget.rs` into submodules (`types`, `process`, `parser`, `progress`, `commands`, `mod.rs`), add Rustdocs, fix Clippy warnings, verify `cargo test` | none | DONE |
-| 2 | M2: Frontend Architecture & Prop-Drilling Elimination | Centralize types/constants, extract utilities, implement Context/hooks, refactor pages & `DetailPanel`, add JSDoc, verify `npm test` & `npm run build` | none | DONE |
-| 3 | M3: Compatibility & Full Regression Hardening | Verify cross-stack IPC contracts, run full test suites, adversarial stress tests, forensic integrity audit | M1, M2 | DONE |
+| 1 | M1: Backend CLI Detection, Resolution, Parameter Sanitization & Parser Fixes | Implement `resolve_winget_path`, `sanitize_winget_args`, update `process.rs`/`progress.rs`/`commands.rs`/`parser.rs`/`lib.rs`, add unit tests in `tests.rs` | none | IN_PROGRESS |
+| 2 | M2: Frontend Initialization State, Installer Feedback & Update Pipeline UI | Fix `App.tsx` state machine, add event listener and progress bar to `InitPage.tsx`, fix `UpdatesPage.tsx` and `PackageCard.tsx` | M1 | PLANNED |
+| 3 | M3: Cross-Stack Verification, Adversarial Challenge & Forensic Audit | Run full regression tests (`cargo test`, `vitest`, `build`), run Reviewers, Challengers, and Forensic Auditor | M1, M2 | PLANNED |
 
 ## Code Layout
 ### Backend (`src-tauri/src/`)
-- `lib.rs`: Tauri builder and IPC command registration facade.
-- `winget/mod.rs`: Public API facade re-exporting types and command handlers.
-- `winget/types.rs`: Data structs (`Package`, `PackageDetail`, `OperationResult`, `WingetSettings`, `ProgressPayload`, `AppError`) and argument serialization.
-- `winget/process.rs`: Process execution (`run_winget`, `run_winget_with_settings`), encoding fallback (`decode_command_bytes`), Win32 creation flags (`CREATE_NO_WINDOW`).
-- `winget/parser.rs`: Tabular output parsing (`parse_winget_table`, `parse_table_as_map`, `extract_columns`), visual column width (`char_width`), ANSI stripping, ARP filtering.
-- `winget/progress.rs`: Streaming command execution (`run_winget_with_progress`), carriage return `\r` handling, progress regex extraction, stderr thread draining.
-- `winget/commands.rs`: High-level package operations (`search_packages`, `list_installed`, `check_upgrades`, `show_package`, `install_package`, `uninstall_package` with 3-tier fallback, `upgrade_package`, `upgrade_all`, `get_winget_version`, `get_package_versions`, `install_winget_env`).
-- `winget/tests.rs`: Unit test suite (preserving all 3 baseline tests + adding width/parser/progress tests).
+- `lib.rs`: Tauri command registration and `install_winget_env` IPC signature.
+- `winget/process.rs`: Process execution, `resolve_winget_path`, `sanitize_winget_args`, `CREATE_NO_WINDOW` flags.
+- `winget/progress.rs`: Streaming execution, `run_winget_with_progress`, progress regex, argument sanitization.
+- `winget/parser.rs`: Tabular output parsing, ANSI stripping, advisory line filtering (`--include-unknown`, `无法确定`, `cannot be determined`, counts).
+- `winget/commands.rs`: High-level operations (`get_winget_version`, `check_upgrades`, `install_winget_env` with progress, `upgrade_package`, `upgrade_all`).
+- `winget/tests.rs`: Comprehensive unit tests for path resolution, parameter sanitization, table parsing with advisory lines, and version checks.
 
 ### Frontend (`src/`)
-- `types/`: Domain TypeScript type definitions (`package.ts`, `settings.ts`, `toast.ts`, `navigation.ts`, `index.ts`).
-- `constants/`: Configuration & constants (`categories.ts`, `navigation.ts`, `settings.ts`, `icons.ts`, `index.ts`).
-- `utils/`: Shared helper functions (`icon.ts`, `clipboard.ts`, `index.ts`).
-- `context/`: React Contexts and custom hooks (`ToastContext.tsx`, `PackageContext.tsx`, `index.ts`).
-- `components/`: Reusable UI components (`ConfirmModal.tsx`, `PackageCard.tsx`, `Sidebar.tsx`, `Toast.tsx`, `DetailPanel.tsx`, `RainbowProgressBar.tsx`).
-- `pages/`: Page components (`DiscoverPage.tsx`, `InstalledPage.tsx`, `UpdatesPage.tsx`, `SettingsPage.tsx`, `InitPage.tsx`).
-- `api.ts`: Pure IPC invocation layer (compatible with both Tauri runtime and Vitest mock mode).
-- `settings.ts`: Settings persistence layer.
-- `App.tsx`: Root application shell providing Context providers and page navigation.
+- `App.tsx`: Initial startup sequence, `checkWinget` error boundary, state transition to `"ready"`.
+- `pages/InitPage.tsx`: Environment installer screen with live progress bar, percentage, stage messages, and error retry.
+- `pages/UpdatesPage.tsx`: Updates list, single/batch upgrades, `refreshInstalled` on completion.
+- `components/PackageCard.tsx`: Package card with version badge safeguards (`未知版本` for unversioned apps).
+- `context/PackageContext.tsx`: Installed/upgrade packages state and operations.
+- `api.ts`: IPC invocation wrappers.
 
 ## Interface Contracts
 ### Tauri IPC Commands (`src-tauri/src/lib.rs` ↔ `src/api.ts`)
-1. `search_packages(query: String, settings: Option<WingetSettings>) -> Result<Vec<Package>, String>`
-2. `list_installed() -> Result<Vec<Package>, String>`
-3. `check_upgrades() -> Result<Vec<Package>, String>`
-4. `show_package(id: String) -> Result<PackageDetail, String>`
-5. `install_package(id: String, settings: Option<WingetSettings>) -> Result<OperationResult, String>`
-6. `uninstall_package(id: String, name: Option<String>, settings: Option<WingetSettings>) -> Result<OperationResult, String>`
-7. `upgrade_package(id: String, settings: Option<WingetSettings>) -> Result<OperationResult, String>`
-8. `upgrade_all(settings: Option<WingetSettings>) -> Result<OperationResult, String>`
-9. `get_winget_version() -> Result<String, String>`
-10. `get_package_versions(id: String) -> Result<Vec<String>, String>`
-11. `install_winget_env() -> Result<OperationResult, String>`
+- `get_winget_version() -> Result<String, String>`
+- `check_upgrades() -> Result<Vec<Package>, String>`
+- `install_winget_env(app: tauri::AppHandle) -> Result<OperationResult, String>`
+- `upgrade_package(id: String, settings: Option<WingetSettings>) -> Result<OperationResult, String>`
+- `upgrade_all(settings: Option<WingetSettings>) -> Result<OperationResult, String>`
 
-### Tauri Event Stream
-- Channel: `"download-progress"`
-- Payload: `ProgressPayload { id: String, progress: f64 }` (0.0 to 100.0)
-
-### Settings Contract (`WingetSettings`)
-- Serialization: strictly `snake_case` on both Rust and TypeScript sides.
-- Defaults: Rust `WingetSettings::default()` and TS `DEFAULT_SETTINGS` maintain their independent defaults as verified by unit tests.
+### Tauri Event Streams
+- Channel `"download-progress"`: `{ id: String, progress: f64 }`
+- Channel `"env-install-progress"`: `{ phase: String, progress: f64, message: String }`

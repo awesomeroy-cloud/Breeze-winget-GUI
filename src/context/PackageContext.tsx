@@ -1,6 +1,6 @@
 ﻿import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from "react";
 import { Package } from "../types";
-import { listInstalled } from "../api";
+import { checkUpgrades, listInstalled } from "../api";
 
 /**
  * Package inventory, upgrades, and active operation tracking contexts.
@@ -13,12 +13,16 @@ import { listInstalled } from "../api";
 export interface PackagesContextValue {
   /** Array of currently installed software packages on the local machine */
   installedPackages: Package[];
+  /** True after the first installed-list fetch completes (success or failure) */
+  installedLoaded: boolean;
   /** Asynchronously refreshes the installed software package list from winget */
   refreshInstalled: () => Promise<void>;
   /** Number of software packages with available upgrades */
   upgradeCount: number;
   /** Direct setter to update the pending upgrade badge count */
   setUpgradeCount: React.Dispatch<React.SetStateAction<number>> | ((count: number) => void);
+  /** Queries winget upgrades and updates the sidebar badge */
+  refreshUpgrades: () => Promise<void>;
 }
 
 /**
@@ -54,6 +58,7 @@ export interface PackageProviderProps {
  */
 export function PackageProvider({ children }: PackageProviderProps) {
   const [installedPackages, setInstalledPackages] = useState<Package[]>([]);
+  const [installedLoaded, setInstalledLoaded] = useState(false);
   const [upgradeCount, setUpgradeCount] = useState<number>(0);
   const [activeOperations, setActiveOperations] = useState<Set<string>>(new Set());
   const [progresses, setProgresses] = useState<Record<string, number>>({});
@@ -65,6 +70,17 @@ export function PackageProvider({ children }: PackageProviderProps) {
       setInstalledPackages(pkgs);
     } catch (err) {
       console.error("Failed to load installed packages:", err);
+    } finally {
+      setInstalledLoaded(true);
+    }
+  }, []);
+
+  const refreshUpgrades = useCallback(async () => {
+    try {
+      const pkgs = await checkUpgrades();
+      setUpgradeCount(pkgs.length);
+    } catch (err) {
+      console.error("Failed to check upgrades:", err);
     }
   }, []);
 
@@ -121,11 +137,13 @@ export function PackageProvider({ children }: PackageProviderProps) {
   const packagesValue = useMemo<PackagesContextValue>(
     () => ({
       installedPackages,
+      installedLoaded,
       refreshInstalled,
       upgradeCount,
       setUpgradeCount,
+      refreshUpgrades,
     }),
-    [installedPackages, refreshInstalled, upgradeCount]
+    [installedPackages, installedLoaded, refreshInstalled, upgradeCount, refreshUpgrades]
   );
 
   const operationsValue = useMemo<OperationsContextValue>(

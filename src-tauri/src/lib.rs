@@ -38,8 +38,8 @@ async fn upgrade_package(id: String, settings: winget::WingetSettings, app: taur
 }
 
 #[tauri::command]
-async fn upgrade_all(settings: winget::WingetSettings) -> Result<OperationResult, String> {
-    winget::upgrade_all(settings).await
+async fn upgrade_all(settings: winget::WingetSettings, app: tauri::AppHandle) -> Result<OperationResult, String> {
+    winget::upgrade_all(settings, app).await
 }
 
 #[tauri::command]
@@ -53,8 +53,8 @@ async fn get_package_versions(id: String) -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
-async fn install_winget_env() -> Result<OperationResult, String> {
-    winget::install_winget_env().await
+async fn install_winget_env(app: tauri::AppHandle) -> Result<OperationResult, String> {
+    winget::install_winget_env(app).await
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

@@ -85,6 +85,21 @@ pub struct ProgressPayload {
     pub progress: f64,
 }
 
+/// Progress payload for bootstrapping the winget environment via PowerShell.
+///
+/// Sent over the `"env-install-progress"` Tauri event channel.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EnvInstallProgressPayload {
+    /// Lifecycle phase: `"download"`, `"install"`, `"complete"`, or `"error"`.
+    pub phase: String,
+
+    /// Operation progress percentage, ranging from 0.0 to 100.0.
+    pub progress: f64,
+
+    /// Human-readable status message for the UI.
+    pub message: String,
+}
+
 /// Application error type representing domain errors in winget operations.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AppError {

@@ -2,8 +2,8 @@ use super::parser::{
     char_width, extract_columns, extract_field, find_column_starts, is_legacy_arp_entry,
     parse_table_as_map, parse_version_list,
 };
-use super::process::{decode_command_bytes, format_command_failure};
-use super::progress::extract_progress_from_line;
+use super::process::{decode_command_bytes, format_command_failure, sanitize_winget_args};
+use super::progress::{extract_found_package_id, extract_progress_from_line};
 use super::types::{CommandOutput, WingetSettings};
 
 #[test]
@@ -27,6 +27,39 @@ Visual Studio Code   Microsoft.VisualStudioCode   1.99.3       1.100.0      wing
         rows[1].get("Id").map(String::as_str),
         Some("Microsoft.VisualStudioCode")
     );
+}
+
+#[test]
+fn sanitize_strips_agreements_from_root_flags() {
+    let args = vec!["--version".to_string(), "--accept-source-agreements".to_string()];
+    let sanitized = sanitize_winget_args(&args);
+    assert_eq!(sanitized, vec!["--version"]);
+}
+
+#[test]
+fn sanitize_adds_agreements_only_for_supported_subcommands() {
+    let search = sanitize_winget_args(&["search".to_string(), "git".to_string()]);
+    assert!(search.contains(&"--accept-source-agreements".to_string()));
+    assert!(search.contains(&"--disable-interactivity".to_string()));
+
+    let show = sanitize_winget_args(&["show".to_string(), "--id".to_string(), "Git.Git".to_string()]);
+    assert!(!show.contains(&"--accept-source-agreements".to_string()));
+    assert!(show.contains(&"--disable-interactivity".to_string()));
+}
+
+#[test]
+fn parse_table_skips_upgrade_advisory_footers() {
+    let output = "\
+Name                 Id                           Version      Available    Source
+--------------------------------------------------------------------------------
+Google Chrome        Google.Chrome                125.0.0      126.0.0      winget
+The following packages have an upgrade available, but require --include-unknown
+2 upgrades available.
+无法确定某些程序包的版本 cannot be determined
+";
+    let rows = parse_table_as_map(output);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].get("Id").map(String::as_str), Some("Google.Chrome"));
 }
 
 #[test]
@@ -171,20 +204,49 @@ fn progress_heuristics_block_counting() {
 fn progress_heuristics_phase_keywords() {
     assert_eq!(
         extract_progress_from_line("正在安装程序包..."),
-        Some(100.0)
+        Some(92.0)
     );
     assert_eq!(
         extract_progress_from_line("Installing Microsoft.VisualStudioCode..."),
-        Some(100.0)
+        Some(92.0)
     );
     assert_eq!(
         extract_progress_from_line("正在卸载旧版本..."),
-        Some(100.0)
+        Some(92.0)
     );
     assert_eq!(
         extract_progress_from_line("Starting uninstall process..."),
+        Some(92.0)
+    );
+    assert_eq!(
+        extract_progress_from_line("Successfully installed Git.Git"),
         Some(100.0)
     );
+}
+
+#[test]
+fn progress_parses_winget_size_counters() {
+    let pct = extract_progress_from_line("  ████████▒▒▒▒▒▒▒▒  12.3 MB / 24.6 MB");
+    assert!(pct.is_some());
+    let val = pct.unwrap();
+    assert!((val - 50.0).abs() < 0.2);
+
+    let half = extract_progress_from_line("1024 KB / 2048 KB");
+    assert!(half.is_some());
+    assert!((half.unwrap() - 50.0).abs() < 0.2);
+}
+
+#[test]
+fn progress_extracts_found_package_id() {
+    assert_eq!(
+        extract_found_package_id("Found Git [Git.Git] Version 2.47.2"),
+        Some("Git.Git".to_string())
+    );
+    assert_eq!(
+        extract_found_package_id("找到 Git [Git.Git] 版本 2.47.2"),
+        Some("Git.Git".to_string())
+    );
+    assert_eq!(extract_found_package_id("Downloading https://example.com"), None);
 }
 
 #[test]
@@ -532,26 +594,20 @@ fn stress_progress_heuristics_block_patterns() {
 
     // Empirical observation: Alternative shaded block elements (▓ U+2593, ░ U+2591)
     // are NOT supported by the heuristic and return None.
-    assert_eq!(extract_progress_from_line("▓▓▓▓░░░░"), None);
+    assert_eq!(extract_progress_from_line("▓▓▓▓░░░░"), Some(50.0));
     assert_eq!(extract_progress_from_line("▌▌▌▌      "), None);
 }
 
 #[test]
 fn stress_progress_heuristics_lifecycle_keywords() {
     // Exact matched keywords
-    assert_eq!(extract_progress_from_line("正在安装程序包..."), Some(100.0));
-    assert_eq!(extract_progress_from_line("Installing Microsoft.PowerToys..."), Some(100.0));
-    assert_eq!(extract_progress_from_line("Starting uninstall process..."), Some(100.0));
-    assert_eq!(extract_progress_from_line("正在卸载程序..."), Some(100.0));
-
-    // Empirical observation: Case-sensitive and phrasing variations that return None
-    // "Starting package install..." contains lowercase "install", not "Installing"
-    assert_eq!(extract_progress_from_line("Starting package install..."), None);
-    // "Uninstalling" (TitleCase) does not match lowercase "uninstall"
-    assert_eq!(extract_progress_from_line("Uninstalling package..."), None);
-    // "Successfully installed" does not match "Installing"
-    assert_eq!(extract_progress_from_line("Successfully installed"), None);
-    // Intermediate non-keyword phase
+    assert_eq!(extract_progress_from_line("正在安装程序包..."), Some(92.0));
+    assert_eq!(extract_progress_from_line("Installing Microsoft.PowerToys..."), Some(92.0));
+    assert_eq!(extract_progress_from_line("Starting uninstall process..."), Some(92.0));
+    assert_eq!(extract_progress_from_line("正在卸载程序..."), Some(92.0));
+    assert_eq!(extract_progress_from_line("Starting package install..."), Some(92.0));
+    assert_eq!(extract_progress_from_line("Uninstalling package..."), Some(92.0));
+    assert_eq!(extract_progress_from_line("Successfully installed"), Some(100.0));
     assert_eq!(extract_progress_from_line("Verifying package hash..."), None);
 }
 

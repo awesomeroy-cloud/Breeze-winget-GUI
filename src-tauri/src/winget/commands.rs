@@ -2,9 +2,12 @@ use crate::winget::parser::{
     extract_field, is_legacy_arp_entry, map_optional_value, map_value, parse_table_as_map,
     parse_version_list,
 };
-use crate::winget::process::{run_winget, run_winget_output, CREATE_NO_WINDOW};
+use crate::winget::process::{run_winget, CREATE_NO_WINDOW};
 use crate::winget::progress::run_winget_with_progress;
-use crate::winget::types::{OperationResult, Package, PackageDetail, WingetSettings};
+use crate::winget::types::{
+    EnvInstallProgressPayload, OperationResult, Package, PackageDetail, WingetSettings,
+};
+use tauri::Emitter;
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
@@ -70,7 +73,7 @@ pub async fn list_installed() -> Result<Vec<Package>, String> {
 
 /// Queries available updates for all installed packages.
 pub async fn check_upgrades() -> Result<Vec<Package>, String> {
-    let output = run_winget(&["upgrade", "--accept-source-agreements"]).await?;
+    let output = run_winget(&["upgrade"]).await?;
     let rows = parse_table_as_map(&output);
 
     let packages = rows
@@ -83,7 +86,15 @@ pub async fn check_upgrades() -> Result<Vec<Package>, String> {
             source: map_optional_value(&m, &["Source", "源"]),
             matched: None,
         })
-        .filter(|p| !p.id.is_empty())
+        .filter(|p| {
+            if p.id.is_empty() {
+                return false;
+            }
+            match p.available.as_deref() {
+                Some(v) if !v.is_empty() && v != "-" && !v.eq_ignore_ascii_case("unknown") => true,
+                _ => false,
+            }
+        })
         .collect();
 
     Ok(packages)
@@ -273,8 +284,14 @@ pub async fn upgrade_package(
     })
 }
 
+/// Synthetic package id used when streaming `upgrade --all` progress to the UI.
+pub const UPGRADE_ALL_PROGRESS_ID: &str = "__upgrade_all__";
+
 /// Upgrades all upgradable packages on the local system.
-pub async fn upgrade_all(settings: WingetSettings) -> Result<OperationResult, String> {
+pub async fn upgrade_all(
+    settings: WingetSettings,
+    app: tauri::AppHandle,
+) -> Result<OperationResult, String> {
     let mut base_args: Vec<String> = vec![
         "upgrade".to_string(),
         "--all".to_string(),
@@ -283,7 +300,7 @@ pub async fn upgrade_all(settings: WingetSettings) -> Result<OperationResult, St
     ];
     base_args.extend(settings.upgrade_args());
     let args_refs: Vec<&str> = base_args.iter().map(|s| s.as_str()).collect();
-    let command_output = run_winget_output(&args_refs).await?;
+    let command_output = run_winget_with_progress(&args_refs, &app, UPGRADE_ALL_PROGRESS_ID).await?;
     let output = command_output.combined_output();
     let success = command_output.success;
 
@@ -316,16 +333,48 @@ pub async fn get_winget_version() -> Result<String, String> {
 /// - Sets `$ErrorActionPreference = 'Stop'` to immediately abort and bubble errors on network failure.
 /// - Sets `$ProgressPreference = 'SilentlyContinue'` to prevent PowerShell download stream corruption.
 /// - Suppresses window creation with Win32 flag `CREATE_NO_WINDOW` (`0x08000000`).
-pub async fn install_winget_env() -> Result<OperationResult, String> {
+pub async fn install_winget_env(app: tauri::AppHandle) -> Result<OperationResult, String> {
+    let emit = |phase: &str, progress: f64, message: &str| {
+        let _ = app.emit(
+            "env-install-progress",
+            EnvInstallProgressPayload {
+                phase: phase.to_string(),
+                progress,
+                message: message.to_string(),
+            },
+        );
+    };
+
+    emit("download", 5.0, "正在从 GitHub 下载 Desktop App Installer...");
+
     let script = r#"
         $ErrorActionPreference = 'Stop';
         $ProgressPreference = 'SilentlyContinue';
-        $tempPath = Join-Path $env:TEMP "winget.msixbundle";
-        Invoke-WebRequest -Uri "https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle" -OutFile $tempPath;
-        Add-AppxPackage -Path $tempPath;
+        $dir = Join-Path $env:TEMP "breeze-winget-setup";
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null;
+        $vclibs = Join-Path $dir "Microsoft.VCLibs.x64.14.00.Desktop.appx";
+        $xaml = Join-Path $dir "Microsoft.UI.Xaml.2.8.x64.appx";
+        $bundle = Join-Path $dir "Microsoft.DesktopAppInstaller.msixbundle";
+        Invoke-WebRequest -Uri "https://aka.ms/Microsoft.VCLibs.x64.14.00.Desktop.appx" -OutFile $vclibs;
+        Invoke-WebRequest -Uri "https://github.com/microsoft/microsoft-ui-xaml/releases/download/v2.8.6/Microsoft.UI.Xaml.2.8.x64.appx" -OutFile $xaml;
+        Invoke-WebRequest -Uri "https://aka.ms/getwinget" -OutFile $bundle;
+        Add-AppxPackage -Path $vclibs -ErrorAction SilentlyContinue;
+        Add-AppxPackage -Path $xaml -ErrorAction SilentlyContinue;
+        Add-AppxPackage -Path $bundle;
     "#;
 
-    tokio::task::spawn_blocking(move || {
+    let app_for_thread = app.clone();
+    let result: Result<OperationResult, String> = tokio::task::spawn_blocking(
+        move || -> Result<OperationResult, String> {
+        let _ = app_for_thread.emit(
+            "env-install-progress",
+            EnvInstallProgressPayload {
+                phase: "install".to_string(),
+                progress: 60.0,
+                message: "正在注册 Microsoft.DesktopAppInstaller...".to_string(),
+            },
+        );
+
         let mut cmd = std::process::Command::new("powershell");
         cmd.args(["-NoProfile", "-NonInteractive", "-Command", script])
             .stdout(std::process::Stdio::piped())
@@ -352,7 +401,16 @@ pub async fn install_winget_env() -> Result<OperationResult, String> {
                 output: String::from_utf8_lossy(&output.stdout).into_owned(),
             })
         }
-    })
+        },
+    )
     .await
-    .map_err(|e| format!("Task join error: {}", e))?
+    .map_err(|e| format!("Task join error: {}", e))?;
+
+    match &result {
+        Ok(op) if op.success => emit("complete", 100.0, "Winget 环境安装完成"),
+        Ok(op) => emit("error", 0.0, &op.message),
+        Err(e) => emit("error", 0.0, e.as_str()),
+    }
+
+    result
 }

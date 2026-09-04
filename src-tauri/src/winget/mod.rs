@@ -26,7 +26,7 @@ pub use commands::{
 pub use types::{OperationResult, Package, PackageDetail, WingetSettings};
 
 #[allow(unused_imports)]
-pub use types::{AppError, CommandOutput, ProgressPayload};
+pub use types::{AppError, CommandOutput, EnvInstallProgressPayload, ProgressPayload};
 
 #[cfg(test)]
 mod tests;

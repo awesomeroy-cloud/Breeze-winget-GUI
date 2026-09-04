@@ -154,6 +154,11 @@ pub fn parse_table_as_map(output: &str) -> Vec<HashMap<String, String>> {
             || trimmed.starts_with('<')
             || trimmed.ends_with("可用。")
             || trimmed.ends_with("available.")
+            || trimmed.contains("升级可用")
+            || trimmed.contains("upgrades available")
+            || trimmed.contains("无法确定")
+            || trimmed.contains("cannot be determined")
+            || trimmed.contains("include-unknown")
         {
             continue;
         }
