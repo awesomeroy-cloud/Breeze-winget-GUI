@@ -12,13 +12,16 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "Breeze",
         "width": 1100,
         "height": 720,
         "minWidth": 800,
         "minHeight": 600,
         "decorations": true,
-        "center": true
+        "center": true,
+        "visible": true,
+        "focus": true
       }
     ],
     "security": {
