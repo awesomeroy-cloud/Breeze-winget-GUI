@@ -37,6 +37,7 @@ test_progress.txt
 # AI 辅助工具产生的隐藏配置
 .gemini/
 .antigravity/
+.agents/
 
 # --- 缓存 ---
 .parcel-cache

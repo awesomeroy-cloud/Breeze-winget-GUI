@@ -1,120 +1,55 @@
-import { useState, useCallback, useEffect } from "react";
+﻿import { useState, useCallback, useEffect } from "react";
 import Sidebar from "./components/Sidebar";
 import DiscoverPage from "./pages/DiscoverPage";
 import InstalledPage from "./pages/InstalledPage";
 import UpdatesPage from "./pages/UpdatesPage";
 import SettingsPage from "./pages/SettingsPage";
 import InitPage from "./pages/InitPage";
-import ToastContainer, { Toast } from "./components/Toast";
-import { Package, listInstalled, getWingetVersion } from "./api";
+import { getWingetVersion } from "./api";
+import { Page } from "./types";
+import { ToastProvider, PackageProvider, usePackages } from "./context";
 
-export type Page = "discover" | "installed" | "updates" | "settings";
+/**
+ * Root application shell and view router.
+ * @module App
+ */
 
-export interface GlobalState {
-  activeOperations: Set<string>;
-  addOperation: (id: string) => void;
-  removeOperation: (id: string) => void;
-  progresses: Record<string, number>;
-  installedPackages: Package[];
-  refreshInstalled: () => Promise<void>;
-}
+// Re-export Page for backward compatibility
+export type { Page };
 
-function App() {
+/**
+ * Internal application shell rendered inside Toast and Package context providers.
+ */
+function AppShell() {
   const [currentPage, setCurrentPage] = useState<Page>("discover");
-  const [upgradeCount, setUpgradeCount] = useState(0);
-  const [toasts, setToasts] = useState<Toast[]>([]);
-  const [activeOperations, setActiveOperations] = useState<Set<string>>(new Set());
-  const [progresses, setProgresses] = useState<Record<string, number>>({});
-  const [installedPackages, setInstalledPackages] = useState<Package[]>([]);
-  
   const [appState, setAppState] = useState<"loading" | "missing-winget" | "ready">("loading");
+  const { refreshInstalled } = usePackages();
 
-  useEffect(() => {
-    checkWinget();
-  }, []);
-
-  const checkWinget = async () => {
+  const checkWinget = useCallback(async () => {
     try {
       setAppState("loading");
       await getWingetVersion();
       setAppState("ready");
-      // Background load installed packages as soon as winget is ready
-      refreshInstalled();
+      // Background load installed software as soon as winget environment is verified
+      await refreshInstalled();
     } catch (e) {
-      console.error("Winget not found:", e);
+      console.error("Winget not found on host system:", e);
       setAppState("missing-winget");
     }
-  };
+  }, [refreshInstalled]);
 
-
-
-  const addOperation = useCallback((id: string) => {
-    setActiveOperations(prev => new Set(prev).add(id));
-  }, []);
-
-  const removeOperation = useCallback((id: string) => {
-    setActiveOperations(prev => {
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
-  }, []);
-  const refreshInstalled = useCallback(async () => {
-    try {
-      const pkgs = await listInstalled();
-      setInstalledPackages(pkgs);
-    } catch (e) {
-      console.error("Failed to load installed packages:", e);
-    }
-  }, []);
   useEffect(() => {
-    if (!(window as any).__TAURI_INTERNALS__) return;
-    
-    let unlisten: (() => void) | undefined;
-    async function setupProgressListener() {
-      const { listen } = await import('@tauri-apps/api/event');
-      unlisten = await listen<{ id: string; progress: number }>('download-progress', (event) => {
-        setProgresses(prev => ({
-          ...prev,
-          [event.payload.id]: event.payload.progress
-        }));
-      });
-    }
-    setupProgressListener();
-    return () => {
-      if (unlisten) unlisten();
-    };
-  }, []);
-
-  const globalState: GlobalState = { 
-    activeOperations, 
-    addOperation, 
-    removeOperation, 
-    progresses, 
-    installedPackages, 
-    refreshInstalled 
-  };
-
-  const addToast = useCallback((message: string, type: "success" | "error" | "info" | "warning" = "info") => {
-    const id = Date.now().toString();
-    setToasts((prev) => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4000);
-  }, []);
-
-  const removeToast = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  }, []);
+    checkWinget();
+  }, [checkWinget]);
 
   const renderPage = () => {
     switch (currentPage) {
       case "discover":
-        return <DiscoverPage addToast={addToast} globalState={globalState} />;
+        return <DiscoverPage />;
       case "installed":
-        return <InstalledPage addToast={addToast} globalState={globalState} />;
+        return <InstalledPage />;
       case "updates":
-        return <UpdatesPage addToast={addToast} onCountChange={setUpgradeCount} globalState={globalState} />;
+        return <UpdatesPage />;
       case "settings":
         return <SettingsPage />;
     }
@@ -122,8 +57,19 @@ function App() {
 
   if (appState === "loading") {
     return (
-      <div style={{ display: "flex", height: "100vh", alignItems: "center", justifyContent: "center", flexDirection: "column" }}>
-        <div className="spinner" style={{ width: 32, height: 32, borderWidth: 3, marginBottom: 16 }}></div>
+      <div
+        style={{
+          display: "flex",
+          height: "100vh",
+          alignItems: "center",
+          justifyContent: "center",
+          flexDirection: "column",
+        }}
+      >
+        <div
+          className="spinner"
+          style={{ width: 32, height: 32, borderWidth: 3, marginBottom: 16 }}
+        />
         <div style={{ color: "var(--text-secondary)" }}>正在初始化 Breeze...</div>
       </div>
     );
@@ -135,19 +81,26 @@ function App() {
 
   return (
     <div className="app-layout">
-      <Sidebar
-        currentPage={currentPage}
-        onNavigate={setCurrentPage}
-        upgradeCount={upgradeCount}
-      />
+      <Sidebar currentPage={currentPage} onNavigate={setCurrentPage} />
       <main className="main-content">
         <div className="page-enter" key={currentPage}>
           {renderPage()}
         </div>
       </main>
-      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   );
 }
 
-export default App;
+/**
+ * Main application entry component providing context providers for notifications
+ * and winget package state management.
+ */
+export default function App() {
+  return (
+    <ToastProvider>
+      <PackageProvider>
+        <AppShell />
+      </PackageProvider>
+    </ToastProvider>
+  );
+}

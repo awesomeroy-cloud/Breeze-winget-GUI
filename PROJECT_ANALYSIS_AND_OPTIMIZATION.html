@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Breeze (Winget-GUI) 代码全景理解与结构优化方案报告</title>
+  <style>
+    :root {
+      --bg-base: #0f111a;
+      --bg-surface: #171926;
+      --bg-card: rgba(255, 255, 255, 0.04);
+      --bg-card-hover: rgba(255, 255, 255, 0.08);
+      --bg-code: #12141f;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-accent: rgba(124, 111, 255, 0.4);
+      --accent: #7c6fff;
+      --accent-light: #9d93ff;
+      --accent-glow: rgba(124, 111, 255, 0.25);
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --info: #3b82f6;
+      --text-main: #f3f4f6;
+      --text-muted: #9ca3af;
+      --text-sub: #6b7280;
+      --radius-sm: 6px;
+      --radius-md: 12px;
+      --radius-lg: 18px;
+      --shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      background-color: var(--bg-base);
+      color: var(--text-main);
+      line-height: 1.7;
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* 侧边导航栏 */
+    .sidebar-toc {
+      width: 280px;
+      min-width: 280px;
+      height: 100vh;
+      position: sticky;
+      top: 0;
+      background: var(--bg-surface);
+      border-right: 1px solid var(--border);
+      padding: 28px 18px;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      z-index: 100;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .brand-icon {
+      width: 38px;
+      height: 38px;
+      background: linear-gradient(135deg, var(--accent), #c084fc);
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      box-shadow: 0 4px 14px var(--accent-glow);
+    }
+
+    .brand-title h1 {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      background: linear-gradient(to right, #fff, #a5b4fc);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .brand-title p {
+      font-size: 11px;
+      color: var(--text-sub);
+    }
+
+    .toc-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-sub);
+      margin-bottom: 12px;
+    }
+
+    .toc-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .toc-link {
+      display: block;
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 13px;
+      padding: 8px 12px;
+      border-radius: var(--radius-sm);
+      transition: all 0.2s;
+    }
+
+    .toc-link:hover {
+      background: var(--bg-card-hover);
+      color: #fff;
+      transform: translateX(3px);
+    }
+
+    .toc-link.active {
+      background: var(--accent-glow);
+      color: var(--accent-light);
+      font-weight: 600;
+      border-left: 3px solid var(--accent);
+    }
+
+    /* 主内容区域 */
+    .main-container {
+      flex: 1;
+      padding: 40px 60px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    header.doc-header {
+      margin-bottom: 40px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-right: 8px;
+      margin-bottom: 12px;
+    }
+
+    .badge-primary {
+      background: rgba(124, 111, 255, 0.2);
+      color: var(--accent-light);
+      border: 1px solid rgba(124, 111, 255, 0.3);
+    }
+
+    .badge-success {
+      background: rgba(16, 185, 129, 0.2);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .doc-header h1 {
+      font-size: 32px;
+      font-weight: 800;
+      margin-bottom: 12px;
+      letter-spacing: -0.5px;
+    }
+
+    .doc-header p.lead {
+      font-size: 16px;
+      color: var(--text-muted);
+      max-width: 900px;
+    }
+
+    /* 章节与卡片 */
+    section {
+      margin-bottom: 50px;
+      scroll-margin-top: 30px;
+    }
+
+    h2.section-title {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #fff;
+    }
+
+    h3.sub-title {
+      font-size: 17px;
+      font-weight: 600;
+      margin: 24px 0 12px 0;
+      color: var(--accent-light);
+    }
+
+    p {
+      margin-bottom: 14px;
+      color: var(--text-muted);
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 20px;
+      margin: 20px 0;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin: 20px 0;
+    }
+
+    .card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 24px;
+      box-shadow: var(--shadow);
+      transition: border-color 0.2s;
+    }
+
+    .card:hover {
+      border-color: var(--border-accent);
+    }
+
+    .card h4 {
+      font-size: 15px;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* 表格 */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 18px 0;
+      background: var(--bg-surface);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    th, td {
+      padding: 12px 16px;
+      text-align: left;
+      font-size: 13px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text-main);
+      font-weight: 600;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    tr:hover td {
+      background: var(--bg-card-hover);
+    }
+
+    /* 代码块与架构图 */
+    pre, code {
+      font-family: "JetBrains Mono", Consolas, "Courier New", monospace;
+    }
+
+    code.inline-code {
+      background: rgba(124, 111, 255, 0.15);
+      color: #c7d2fe;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+
+    pre.code-block {
+      background: var(--bg-code);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 16px 20px;
+      overflow-x: auto;
+      font-size: 13px;
+      color: #e5e7eb;
+      margin: 16px 0;
+      line-height: 1.5;
+    }
+
+    /* 流程图展示盒 */
+    .diagram-box {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 24px;
+      margin: 20px 0;
+      text-align: center;
+    }
+
+    .diagram-box svg {
+      max-width: 100%;
+      height: auto;
+    }
+
+    /* 优化建议标记卡片 */
+    .action-card {
+      background: rgba(124, 111, 255, 0.05);
+      border-left: 4px solid var(--accent);
+      border-radius: 0 var(--radius-md) var(--radius-md) 0;
+      padding: 16px 20px;
+      margin: 14px 0;
+    }
+
+    .action-card h5 {
+      font-size: 14px;
+      color: #fff;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .tag-priority-high {
+      background: rgba(239, 68, 68, 0.2);
+      color: #fca5a5;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 4px;
+    }
+
+    .tag-priority-med {
+      background: rgba(245, 158, 11, 0.2);
+      color: #fcd34d;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 4px;
+    }
+
+    ul, ol {
+      margin-left: 20px;
+      color: var(--text-muted);
+      margin-bottom: 14px;
+      font-size: 14px;
+    }
+
+    li {
+      margin-bottom: 6px;
+    }
+
+    .highlight {
+      color: var(--accent-light);
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 侧边目录 -->
+  <aside class="sidebar-toc">
+    <div class="brand">
+      <div class="brand-icon">🍃</div>
+      <div class="brand-title">
+        <h1>Breeze 架构全景</h1>
+        <p>Windows Winget GUI</p>
+      </div>
+    </div>
+
+    <div class="toc-title">目录导航</div>
+    <ul class="toc-list">
+      <li><a href="#section-1" class="toc-link active">1. 项目全貌与定位剖析</a></li>
+      <li><a href="#section-2" class="toc-link">2. 系统全栈架构与流程</a></li>
+      <li><a href="#section-3" class="toc-link">3. Rust 后端内核深度剖析</a></li>
+      <li><a href="#section-4" class="toc-link">4. React 前端结构深度剖析</a></li>
+      <li><a href="#section-5" class="toc-link">5. 核心算法与难点攻克</a></li>
+      <li><a href="#section-6" class="toc-link">6. 代码结构痛点与坏味道</a></li>
+      <li><a href="#section-7" class="toc-link">7. 重构与优化实施方案</a></li>
+      <li><a href="#section-8" class="toc-link">8. 注释标准与代码可读性</a></li>
+    </ul>
+  </aside>
+
+  <!-- 主体内容 -->
+  <main class="main-container">
+    <header class="doc-header">
+      <div>
+        <span class="badge badge-primary">Tauri v2 + React 19 + Rust</span>
+        <span class="badge badge-success">Windows 11 Fluent Design</span>
+        <span class="badge badge-primary">单元测试已全绿通过</span>
+      </div>
+      <h1>🍃 Breeze (Winget GUI) 代码全貌理解与重构规划报告</h1>
+      <p class="lead">
+        本报告基于对 Breeze 完整代码库（包括 Rust 后端进程管理、CLI 流式解析、GBK/UTF-8 编码适配、React 前端组件树、设计系统及测试套件）的通篇深度审阅，梳理当前业务与技术架构，定位结构设计中的瓶颈，并提供易读性提升与模块化拆解指南。
+      </p>
+    </header>
+
+    <!-- 第 1 节：项目定位与核心价值 -->
+    <section id="section-1">
+      <h2 class="section-title">1. 项目全貌与定位剖析</h2>
+      <p>
+        <strong>Breeze</strong> 是一款专为 Windows 11/10 打造的现代化轻量级 Winget 客户端。相比市面上成熟但庞杂的竞品（如 Devolutions 收购的 UniGetUI），Breeze 坚守<strong>“奥卡姆剃刀”</strong>做减法哲学：
+      </p>
+
+      <div class="grid-3">
+        <div class="card">
+          <h4>🎯 极致专注</h4>
+          <p>仅深耕 Microsoft Winget 原生生态，不捆绑 Chocolatey、Scoop、Pip 等异构包源，消灭虚假更新通知与跨源冲突。</p>
+        </div>
+        <div class="card">
+          <h4>🪶 极轻量原生</h4>
+          <p>基于 Tauri v2 + Rust 后端，直接复用 Windows 11 内置 WebView2，打包体积仅 ~5MB，内存仅 ~30MB，远离 Electron 的数百兆臃肿。</p>
+        </div>
+        <div class="card">
+          <h4>✨ Fluent 视觉流</h4>
+          <p>严格遵循 Windows 11 Fluent Design（云母材质、柔光亚克力、平滑圆角、微动效与彩虹流光进度条），带来原生级精致感。</p>
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>维度</th>
+            <th>UniGetUI (原 WingetUI)</th>
+            <th>传统 Microsoft Store</th>
+            <th>Breeze (本项目)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>技术栈</strong></td>
+            <td>C# / Avalonia</td>
+            <td>WinUI / UWP 原生</td>
+            <td><strong>Tauri v2 (Rust) + React 19</strong></td>
+          </tr>
+          <tr>
+            <td><strong>应用定位</strong></td>
+            <td>多包管理器集成大杂烩</td>
+            <td>封闭应用商店应用</td>
+            <td><strong>专注 WinGet 的极简高能“手术刀”</strong></td>
+          </tr>
+          <tr>
+            <td><strong>安装控制力</strong></td>
+            <td>参数项较繁杂</td>
+            <td>黑盒全自动，无法配置</td>
+            <td><strong>支持静默/交互、体系结构、作用域、强制覆盖精确控制</strong></td>
+          </tr>
+          <tr>
+            <td><strong>冷启动速度</strong></td>
+            <td>较慢 (2~4秒)</td>
+            <td>中等 (1~2秒)</td>
+            <td><strong>秒级冷启动，后台静默瞬时缓存预加载</strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 第 2 节：全栈架构 -->
+    <section id="section-2">
+      <h2 class="section-title">2. 系统全栈架构与流程</h2>
+      <p>
+        系统分为 <strong>前端表现层 (React + TypeScript)</strong> 与 <strong>本地后端服务层 (Rust + Tauri IPC)</strong>，并通过非阻塞通道调用系统命令行驱动 <strong>Windows Package Manager (`winget.exe`)</strong>。
+      </p>
+
+      <div class="diagram-box">
+        <svg viewBox="0 0 880 340" width="100%" height="300" xmlns="http://www.w3.org/2000/svg">
+          <!-- 容器框 -->
+          <rect x="20" y="20" width="840" height="300" rx="14" fill="#171926" stroke="#2e344e" stroke-width="2"/>
+          
+          <!-- 前端层 -->
+          <rect x="50" y="50" width="360" height="240" rx="10" fill="#1a1e30" stroke="#7c6fff" stroke-width="1.5"/>
+          <text x="70" y="80" fill="#a5b4fc" font-size="14" font-weight="bold">React 19 + TypeScript (WebView2)</text>
+          
+          <rect x="70" y="100" width="150" height="42" rx="6" fill="#252a42"/>
+          <text x="85" y="126" fill="#f3f4f6" font-size="12">页面: Discover / Installed</text>
+          
+          <rect x="240" y="100" width="150" height="42" rx="6" fill="#252a42"/>
+          <text x="255" y="126" fill="#f3f4f6" font-size="12">页面: Updates / Settings</text>
+          
+          <rect x="70" y="155" width="320" height="42" rx="6" fill="#2d3352"/>
+          <text x="120" y="181" fill="#c7d2fe" font-size="12">GlobalState + RainbowProgressBar</text>
+          
+          <rect x="70" y="210" width="320" height="60" rx="6" fill="#252a42"/>
+          <text x="85" y="235" fill="#9ca3af" font-size="11">api.ts (双模式环境网关)</text>
+          <text x="85" y="255" fill="#6ee7b7" font-size="11">● Tauri 真实环境 (tauriInvoke)  ○ 浏览器独立 Mock</text>
+          
+          <!-- 双向通信 IPC -->
+          <path d="M 410 140 L 460 140" stroke="#7c6fff" stroke-width="2" stroke-dasharray="4"/>
+          <text x="415" y="130" fill="#a5b4fc" font-size="10">IPC Invoke</text>
+          
+          <path d="M 460 210 L 410 210" stroke="#10b981" stroke-width="2" stroke-dasharray="4"/>
+          <text x="415" y="230" fill="#6ee7b7" font-size="10">Event: Progress</text>
+
+          <!-- 后端 Rust -->
+          <rect x="470" y="50" width="360" height="240" rx="10" fill="#1a1e30" stroke="#10b981" stroke-width="1.5"/>
+          <text x="490" y="80" fill="#6ee7b7" font-size="14" font-weight="bold">Rust 后端 (Tauri v2 Core)</text>
+          
+          <rect x="490" y="100" width="320" height="42" rx="6" fill="#252a42"/>
+          <text x="510" y="126" fill="#f3f4f6" font-size="12">lib.rs (11 个 Tauri Command 路由)</text>
+          
+          <rect x="490" y="155" width="320" height="60" rx="6" fill="#2d3352"/>
+          <text x="505" y="178" fill="#c7d2fe" font-size="12">winget.rs 内核驱动引擎</text>
+          <text x="505" y="200" fill="#9ca3af" font-size="11">进程派生 | GBK/UTF-8 双解码 | 表格视觉宽对齐 | 进度发射</text>
+
+          <rect x="490" y="230" width="320" height="40" rx="6" fill="#1e293b"/>
+          <text x="540" y="255" fill="#fcd34d" font-size="12">⚙️ 宿主操作系统: winget.exe / PowerShell</text>
+        </svg>
+      </div>
+    </section>
+
+    <!-- 第 3 节：Rust 后端深度剖析 -->
+    <section id="section-3">
+      <h2 class="section-title">3. Rust 后端内核深度剖析 (`src-tauri`)</h2>
+      <p>后端代码集中在 <code class="inline-code">src-tauri/src/winget.rs</code> (共 887 行) 以及 <code class="inline-code">src-tauri/src/lib.rs</code>。其核心职责包括：</p>
+
+      <div class="grid-2">
+        <div class="card">
+          <h4>1. 静默进程调度 & Windows Flag</h4>
+          <p>
+            通过 <code class="inline-code">std::process::Command</code> 派生子进程，并附带参数 <code class="inline-code">CREATE_NO_WINDOW (0x08000000)</code>，彻底屏蔽运行 CLI 时系统弹出的黑色 CMD 闪烁窗口。
+          </p>
+        </div>
+        <div class="card">
+          <h4>2. 中文 Windows 乱码自愈 (GBK/UTF-8)</h4>
+          <p>
+            中文 Windows 平台默认活动代码页通常为 CP936 (GBK)。winget 输出中文字符时若直接按 UTF-8 解析会导致崩溃乱码。<code class="inline-code">decode_command_bytes</code> 优先尝试 UTF-8，失败后自动 fallback 到 <code class="inline-code">encoding_rs::GBK</code>。
+          </p>
+        </div>
+        <div class="card">
+          <h4>3. 智能多级卸载降级策略</h4>
+          <p>
+            面对老旧注册表软件（如无标准 Package ID 或 ID 与名称相同），执行：<br>
+            <strong>ID 精确匹配</strong> ➔ 失败则 <strong>名称精确匹配 (<code class="inline-code">--name</code>)</strong> ➔ 失败则 <strong>模糊匹配</strong>。极大提高了老软件卸载成功率。
+          </p>
+        </div>
+        <div class="card">
+          <h4>4. 环境自愈与引导 (Self-Healing)</h4>
+          <p>
+            在 <code class="inline-code">install_winget_env</code> 中，使用 PowerShell 脚本自动化从微软官方仓库下载最新的 <code class="inline-code">Microsoft.DesktopAppInstaller</code> msixbundle 并静默安装。
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 第 4 节：React 前端深度剖析 -->
+    <section id="section-4">
+      <h2 class="section-title">4. React 前端结构深度剖析 (`src/`)</h2>
+      <p>前端基于纯净的 <strong>React 19 + TypeScript + 原生 Vanilla CSS</strong>，无冗余的第三方庞大组件库负担，极具响应速度与流畅性：</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>文件/模块</th>
+            <th>职责定位</th>
+            <th>核心特性与状态设计</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code class="inline-code">src/App.tsx</code></td>
+            <td>应用顶层容器与全局总线</td>
+            <td>管理当前路由 <code class="inline-code">currentPage</code>、环境状态 <code class="inline-code">appState</code>、全局进行中操作集合 <code class="inline-code">activeOperations: Set&lt;string&gt;</code> 与全局已安装列表缓存。</td>
+          </tr>
+          <tr>
+            <td><code class="inline-code">src/api.ts</code></td>
+            <td>通信抽象层与 Browser Mock</td>
+            <td>检测 <code class="inline-code">__TAURI_INTERNALS__</code>。若在纯浏览器中启动，则自动无缝提供完整的 Mock 数据与模拟延迟，极大提升开发和纯前端单元测试效率。</td>
+          </tr>
+          <tr>
+            <td><code class="inline-code">src/settings.ts</code></td>
+            <td>参数配置管理器</td>
+            <td>基于 <code class="inline-code">localStorage</code> 的强类型持久化设置，控制 winget CLI 运行时的范围、架构、模式和来源。</td>
+          </tr>
+          <tr>
+            <td><code class="inline-code">DiscoverPage.tsx</code></td>
+            <td>发现与搜索中心</td>
+            <td>推荐常用开发者、办公与多媒体分类；支持一键快速安装与进度联动。</td>
+          </tr>
+          <tr>
+            <td><code class="inline-code">InstalledPage.tsx</code></td>
+            <td>已安装管理</td>
+            <td>展示 Winget、Microsoft Store、其他来源分类芯片统计；支持按名称/ID 快速模糊过滤与二次确认模态框安全卸载。</td>
+          </tr>
+          <tr>
+            <td><code class="inline-code">UpdatesPage.tsx</code></td>
+            <td>升级中心</td>
+            <td>提供一键全量升级（<code class="inline-code">upgrade_all</code>）及单项独立升级。角标数量实时同步更新至侧边栏。</td>
+          </tr>
+          <tr>
+            <td><code class="inline-code">RainbowProgressBar.tsx</code></td>
+            <td>彩虹流光进度条</td>
+            <td>智能融合<strong>真实现实流式进度</strong>（来自 Rust 事件）与<strong>高保真平滑插值模拟进度</strong>，操作完成时呈现优雅的充能与淡出动画。</td>
+          </tr>
+          <tr>
+            <td><code class="inline-code">DetailPanel.tsx</code></td>
+            <td>详情侧抽屉面板</td>
+            <td>拉取软件作者、协议、主页、描述及可用历史版本下拉菜单；内置错误日志一键复制面板。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 第 5 节：核心算法与难点剖析 -->
+    <section id="section-5">
+      <h2 class="section-title">5. 核心算法与难点攻克</h2>
+      
+      <h3 class="sub-title">5.1 宽字符视觉列宽对齐算法 (East Asian Visual Column Parsing)</h3>
+      <p>
+        由于 winget 输出的是按命令行字符视觉宽度对齐的固定宽度文本表格（包含破折号分割行），而中文全角字符在终端占 2 个字符宽度、ASCII 占 1 个。若直接按字符串索引截取会导致严重的列位移甚至乱码。
+      </p>
+      <pre class="code-block">// src-tauri/src/winget.rs:295
+fn char_width(c: char) -> usize {
+    if c as u32 > 0x2E80 { 2 } else { 1 } // CJK 汉字/符号占用 2 字符视觉宽
+}
+
+// 通过建立 visual_to_char 双向映射数组，精确将字符视觉位置转换回 Rust 的 String 切片下标
+let mut visual_to_char = Vec::with_capacity(line.len() * 2);
+for (idx, &c) in chars.iter().enumerate() {
+    let w = char_width(c);
+    for _ in 0..w {
+        visual_to_char.push(idx);
+    }
+}</pre>
+
+      <h3 class="sub-title">5.2 终端流式进度探测三段式启发式算法</h3>
+      <p>
+        winget 没有官方标准 JSON 进度输出接口，Breeze 通过底层管道单字节捕获与多级规则精准捕获进度：
+      </p>
+      <ul>
+        <li><strong>规则 1：百分比正则/逆向扫描</strong> ➔ 捕捉 <code class="inline-code">"45%"</code>、<code class="inline-code">"100%"</code> 数值模式；</li>
+        <li><strong>规则 2：终端字符块比率计算</strong> ➔ 解析经典终端字符块 <code class="inline-code">█</code> 与 <code class="inline-code">▒</code> 的占比；</li>
+        <li><strong>规则 3：生命周期状态关键字匹配</strong> ➔ 匹配到 <code class="inline-code">"Installing"</code> / <code class="inline-code">"安装"</code> 阶段时，自动将进度置满 100%。</li>
+      </ul>
+    </section>
+
+    <!-- 第 6 节：代码结构痛点 -->
+    <section id="section-6">
+      <h2 class="section-title">6. 代码结构痛点与坏味道识别</h2>
+
+      <div class="action-card">
+        <h5><span class="tag-priority-high">痛点 1</span> 后端 <code class="inline-code">winget.rs</code> 单文件膨胀 (887 行)，职责过度耦合</h5>
+        <p>
+          一个文件内混杂了：1. 数据传输模型定义；2. Windows 命令行构建；3. 编码解码；4. 终端视觉列宽解析算法；5. 管道字节流监控与事件发射；6. PowerShell 脚本；7. 单元测试。违反了单一职责原则 (SRP)，新加入维护者阅读心智负担极重。
+        </p>
+      </div>
+
+      <div class="action-card">
+        <h5><span class="tag-priority-high">痛点 2</span> 前端状态穿透 (Prop Drilling) 与粗粒度全局状态</h5>
+        <p>
+          <code class="inline-code">GlobalState</code> 定义在 <code class="inline-code">App.tsx</code> 中，通过属性逐层深传至 <code class="inline-code">DiscoverPage</code> ➔ <code class="inline-code">PackageCard</code> ➔ <code class="inline-code">DetailPanel</code>。没有采用统一的 Context 或轻量状态分发，增加了组件间的强耦合度。
+        </p>
+      </div>
+
+      <div class="action-card">
+        <h5><span class="tag-priority-med">痛点 3</span> 类型定义与常量分散，缺乏统一域模型</h5>
+        <p>
+          前端的 <code class="inline-code">Package</code> 在 <code class="inline-code">api.ts</code>，设置类型在 <code class="inline-code">settings.ts</code>，页面路由与状态在 <code class="inline-code">App.tsx</code>，缺少独立的 <code class="inline-code">src/types/</code> 模块；卡片图标的 Emoji 解析逻辑（<code class="inline-code">getIcon</code>）硬编码在组件内，无法多端复用。
+        </p>
+      </div>
+
+      <div class="action-card">
+        <h5><span class="tag-priority-med">痛点 4</span> 关键算法与业务流缺少专业级注释</h5>
+        <p>
+          尽管主要功能运行稳定，但 Rust 中的特殊常量（如 Windows 进程标志 <code class="inline-code">0x08000000</code>、字符边界 Unicode 区间 <code class="inline-code">0x2E80</code>）以及多级降级卸载的背景缺乏面向未来协作者的说明文档。
+        </p>
+      </div>
+    </section>
+
+    <!-- 第 7 节：重构与优化实施方案 -->
+    <section id="section-7">
+      <h2 class="section-title">7. 重构与优化实施方案 (蓝图建议)</h2>
+
+      <h3 class="sub-title">7.1 Rust 后端目录结构模块化重构 (建议落地结构)</h3>
+      <pre class="code-block">src-tauri/src/
+├── main.rs                 # 极简启动入口（保持原样）
+├── lib.rs                  # 注册 Tauri 命令处理器与插件
+└── winget/                 # [重构] 将 887 行的大文件拆解为高内聚子模块
+    ├── mod.rs              # 统一对外暴露 API 门面
+    ├── types.rs            # Package, PackageDetail, WingetSettings 等模型
+    ├── process.rs          # 底层子进程执行、GBK/UTF-8 编码自适应
+    ├── parser.rs           # 视觉列宽对齐、固定宽表格与详情字段解析
+    ├── progress.rs         # 管道流读取、多级特征进度提取与事件派发
+    ├── commands.rs         # search, install, upgrade, uninstall 核心业务
+    └── installer.rs        # Winget 缺失时的 PowerShell 自动化安装部署</pre>
+
+      <h3 class="sub-title">7.2 前端工程目录分层治理 (建议落地结构)</h3>
+      <pre class="code-block">src/
+├── types/                  # 强类型统一定义
+│   ├── package.ts          # Package, PackageDetail, OperationResult
+│   ├── settings.ts         # WingetSettings 与默认值
+│   └── app.ts              # 路由、全局状态接口
+├── context/                # 消除 Prop-drilling
+│   └── WingetContext.tsx   # 封装 operations, progresses, package 缓存
+├── hooks/                  # 业务逻辑 Hook 化
+│   ├── useWingetAction.ts  # 统一安装、卸载、更新的 Toast 与错误拦截
+│   └── useProgress.ts      # 监听 Tauri 进度事件 Hook
+├── utils/                  # 纯工具库
+│   └── iconHelper.ts       # 根据包名与标签推导图标 Emoji/SVG
+├── components/             # 原子级 & 业务组件
+├── pages/                  # 页面路由视图
+└── index.css               # 基础设计系统</pre>
+    </section>
+
+    <!-- 第 8 节：注释规范 -->
+    <section id="section-8">
+      <h2 class="section-title">8. 注释标准与代码可读性提升规范</h2>
+      <p>后续优化过程将遵循严谨的文档化与注释规范：</p>
+
+      <div class="grid-2">
+        <div class="card">
+          <h4>Rust 标准文档注释 (`///`)</h4>
+          <p>
+            为所有公有类型、函数与算法编写具备 <strong>参数说明 (<code class="inline-code"># Arguments</code>)</strong>、<strong>返回值 (<code class="inline-code"># Returns</code>)</strong>、<strong>设计缘由说明 (<code class="inline-code"># Why</code>)</strong> 的 Rustdoc 注释，确保通过 <code class="inline-code">cargo doc</code> 生成优雅的离线开发文档。
+          </p>
+        </div>
+        <div class="card">
+          <h4>TypeScript JSDoc 规范</h4>
+          <p>
+            React 组件与 Hook 全部配备清晰的 JSDoc 注释，说明 Props 用途、生命周期依赖与事件回传时机，支持 VS Code 智能悬浮提示。
+          </p>
+        </div>
+      </div>
+
+      <div style="margin-top: 30px; text-align: center; color: var(--text-sub); font-size: 12px; border-top: 1px solid var(--border); padding-top: 20px;">
+        报告生成时间: 2026-09-05 &bull; Breeze (Winget GUI) 架构深度分析文档
+      </div>
+    </section>
+  </main>
+
+  <script>
+    // 侧边栏高亮交互
+    const links = document.querySelectorAll('.toc-link');
+    const sections = document.querySelectorAll('section');
+
+    window.addEventListener('scroll', () => {
+      let current = '';
+      sections.forEach(section => {
+        const top = section.offsetTop - 120;
+        if (window.pageYOffset >= top) {
+          current = section.getAttribute('id');
+        }
+      });
+
+      links.forEach(link => {
+        link.classList.remove('active');
+        if (link.getAttribute('href').includes(current)) {
+          link.classList.add('active');
+        }
+      });
+    });
+  </script>
+</body>
+</html>

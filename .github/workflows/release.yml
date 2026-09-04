@@ -35,6 +35,8 @@ jobs:
           $pkg = Get-Content package.json -Raw | ConvertFrom-Json
           $pkg.version = $version
           $pkg | ConvertTo-Json -Depth 10 | Set-Content package.json
+          # Update Cargo.toml
+          (Get-Content src-tauri/Cargo.toml -Raw) -replace '(?m)^version = ".*"', "version = `"$version`"" | Set-Content src-tauri/Cargo.toml
 
       - name: Install frontend dependencies
         run: npm install

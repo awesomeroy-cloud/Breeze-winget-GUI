@@ -1,6 +1,6 @@
 [package]
 name = "breeze"
-version = "0.1.0"
+version = "0.1.1"
 description = "A beautiful GUI for winget - Windows Package Manager"
 authors = ["Roy"]
 edition = "2021"

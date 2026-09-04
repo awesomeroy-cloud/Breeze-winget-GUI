@@ -1,40 +1,41 @@
-import { Package } from "../api";
+﻿import React from "react";
+import { Package } from "../types";
+import { getPackageIcon } from "../utils/icon";
 
-interface Props {
+/**
+ * Reusable package card component for grid views.
+ * @module components/PackageCard
+ */
+
+/**
+ * Properties for the PackageCard component.
+ */
+export interface PackageCardProps {
+  /** The package data model displayed on this card */
   pkg: Package;
+  /** Click handler triggered when clicking anywhere on the card */
   onClick: (pkg: Package) => void;
+  /** Optional custom action button rendered in the footer area */
   actionButton?: React.ReactNode;
+  /** Whether to render the available upgrade version badge if available */
   showUpgrade?: boolean;
 }
 
-/** Derive a deterministic icon emoji from the package name */
-function getIcon(name: string): string {
-  const lower = name.toLowerCase();
-  if (lower.includes("code") || lower.includes("studio") || lower.includes("ide")) return "💻";
-  if (lower.includes("chrome") || lower.includes("firefox") || lower.includes("browser") || lower.includes("edge")) return "🌐";
-  if (lower.includes("git")) return "🔀";
-  if (lower.includes("node") || lower.includes("python") || lower.includes("java") || lower.includes("rust")) return "⚡";
-  if (lower.includes("music") || lower.includes("spotify") || lower.includes("player")) return "🎵";
-  if (lower.includes("photo") || lower.includes("image") || lower.includes("paint")) return "🎨";
-  if (lower.includes("video") || lower.includes("vlc") || lower.includes("pot")) return "🎬";
-  if (lower.includes("chat") || lower.includes("discord") || lower.includes("telegram") || lower.includes("wechat")) return "💬";
-  if (lower.includes("office") || lower.includes("word") || lower.includes("excel")) return "📄";
-  if (lower.includes("zip") || lower.includes("7z") || lower.includes("rar")) return "📁";
-  if (lower.includes("driver") || lower.includes("amd") || lower.includes("nvidia")) return "🖥️";
-  if (lower.includes("game") || lower.includes("steam")) return "🎮";
-  if (lower.includes("vpn") || lower.includes("proxy")) return "🔒";
-  if (lower.includes("terminal") || lower.includes("shell") || lower.includes("powershell")) return "⌨️";
-  return "📦";
-}
-
-export default function PackageCard({ pkg, onClick, actionButton, showUpgrade }: Props) {
+/**
+ * Card component presenting an application's icon, name, ID, version, and optional actions.
+ */
+export default function PackageCard({ pkg, onClick, actionButton, showUpgrade }: PackageCardProps) {
   return (
     <div className="package-card" onClick={() => onClick(pkg)}>
       <div className="package-card-header">
-        <div className="package-icon">{getIcon(pkg.name)}</div>
+        <div className="package-icon">{getPackageIcon(pkg.name, pkg.id)}</div>
         <div className="package-info">
-          <div className="package-name" title={pkg.name}>{pkg.name}</div>
-          <div className="package-id" title={pkg.id}>{pkg.id}</div>
+          <div className="package-name" title={pkg.name}>
+            {pkg.name}
+          </div>
+          <div className="package-id" title={pkg.id}>
+            {pkg.id}
+          </div>
         </div>
       </div>
 

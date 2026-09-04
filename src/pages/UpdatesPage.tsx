@@ -1,29 +1,34 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { Package, checkUpgrades, upgradePackage, upgradeAll } from "../api";
 import PackageCard from "../components/PackageCard";
 import DetailPanel from "../components/DetailPanel";
 import RainbowProgressBar from "../components/RainbowProgressBar";
+import { useToast, usePackages, useOperations } from "../context";
 
-import { GlobalState } from "../App";
+/**
+ * Available package updates page component.
+ * @module pages/UpdatesPage
+ */
 
-interface Props {
-  addToast: (msg: string, type: "success" | "error" | "info" | "warning") => void;
-  onCountChange: (count: number) => void;
-  globalState: GlobalState;
-}
+/**
+ * Renders available software upgrades, progress bars for active updates,
+ * batch upgrade operations, and synchronizes badge counts directly into PackageContext.
+ */
+export default function UpdatesPage() {
+  const { addToast } = useToast();
+  const { setUpgradeCount, refreshInstalled } = usePackages();
+  const { activeOperations, addOperation, removeOperation, isOperating, progresses } = useOperations();
 
-export default function UpdatesPage({ addToast, onCountChange, globalState }: Props) {
   const [packages, setPackages] = useState<Package[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPkg, setSelectedPkg] = useState<Package | null>(null);
-  const { activeOperations, addOperation, removeOperation } = globalState;
 
   const loadUpgrades = async () => {
     setLoading(true);
     try {
       const pkgs = await checkUpgrades();
       setPackages(pkgs);
-      onCountChange(pkgs.length);
+      setUpgradeCount(pkgs.length);
     } catch (err) {
       addToast(`检查更新失败: ${err}`, "error");
     } finally {
@@ -41,8 +46,12 @@ export default function UpdatesPage({ addToast, onCountChange, globalState }: Pr
       const result = await upgradePackage(pkg.id);
       if (result.success) {
         addToast(`${pkg.name} 更新成功`, "success");
-        setPackages((prev) => prev.filter((p) => p.id !== pkg.id));
-        onCountChange(packages.length - 1);
+        setPackages((prev) => {
+          const next = prev.filter((p) => p.id !== pkg.id);
+          setUpgradeCount(next.length);
+          return next;
+        });
+        await refreshInstalled();
       } else {
         addToast(`${pkg.name} 更新失败`, "error");
       }
@@ -54,13 +63,14 @@ export default function UpdatesPage({ addToast, onCountChange, globalState }: Pr
   };
 
   const handleUpgradeAll = async () => {
-    packages.forEach(pkg => addOperation(pkg.id));
+    packages.forEach((pkg) => addOperation(pkg.id));
     try {
       const result = await upgradeAll();
       if (result.success) {
         addToast("所有软件已更新", "success");
         setPackages([]);
-        onCountChange(0);
+        setUpgradeCount(0);
+        await refreshInstalled();
       } else {
         addToast("部分软件更新可能失败", "warning");
         await loadUpgrades();
@@ -68,7 +78,7 @@ export default function UpdatesPage({ addToast, onCountChange, globalState }: Pr
     } catch (err) {
       addToast(`全部更新出错: ${err}`, "error");
     } finally {
-      packages.forEach(pkg => removeOperation(pkg.id));
+      packages.forEach((pkg) => removeOperation(pkg.id));
     }
   };
 
@@ -77,7 +87,12 @@ export default function UpdatesPage({ addToast, onCountChange, globalState }: Pr
       <div className="header">
         <h2 className="header-title">🔄 更新</h2>
         <div className="header-actions">
-          <button className="btn btn-primary" onClick={handleUpgradeAll} disabled={activeOperations.size > 0}>
+          <button
+            className="btn btn-primary"
+            onClick={handleUpgradeAll}
+            disabled={activeOperations.size > 0 || packages.length === 0}
+            type="button"
+          >
             {activeOperations.size > 0 ? "全部更新中..." : "🚀 全部一键更新"}
           </button>
         </div>
@@ -94,7 +109,12 @@ export default function UpdatesPage({ addToast, onCountChange, globalState }: Pr
             <div className="all-updated-icon">🎉</div>
             <h2>所有软件都是最新的！</h2>
             <p>没有发现可用的更新。</p>
-            <button className="btn btn-secondary" onClick={loadUpgrades} style={{ marginTop: 12 }}>
+            <button
+              className="btn btn-secondary"
+              onClick={loadUpgrades}
+              style={{ marginTop: 12 }}
+              type="button"
+            >
               重新检查
             </button>
           </div>
@@ -109,10 +129,18 @@ export default function UpdatesPage({ addToast, onCountChange, globalState }: Pr
 
             <div className="package-grid">
               {packages.map((pkg) => {
-                const isUpgrading = activeOperations.has(pkg.id);
-                const progress = globalState.progresses[pkg.id] || 0;
+                const isUpgrading = isOperating(pkg.id);
+                const progress = progresses[pkg.id] || 0;
                 return (
-                  <div key={pkg.id} className="package-card-wrapper" style={{ position: "relative", overflow: "hidden", borderRadius: "var(--radius-lg)" }}>
+                  <div
+                    key={pkg.id}
+                    className="package-card-wrapper"
+                    style={{
+                      position: "relative",
+                      overflow: "hidden",
+                      borderRadius: "var(--radius-lg)",
+                    }}
+                  >
                     <RainbowProgressBar active={isUpgrading} progress={progress} />
                     <PackageCard
                       pkg={pkg}
@@ -121,8 +149,9 @@ export default function UpdatesPage({ addToast, onCountChange, globalState }: Pr
                       actionButton={
                         <button
                           className="btn btn-primary btn-sm"
-                          disabled={isUpgrading || activeOperations.size > 0 && !isUpgrading}
+                          disabled={isUpgrading || (activeOperations.size > 0 && !isUpgrading)}
                           onClick={() => handleUpgrade(pkg)}
+                          type="button"
                         >
                           {isUpgrading ? "更新中..." : `更新到 ${pkg.available}`}
                         </button>
@@ -140,10 +169,8 @@ export default function UpdatesPage({ addToast, onCountChange, globalState }: Pr
         <DetailPanel
           pkg={selectedPkg}
           onClose={() => setSelectedPkg(null)}
-          addToast={addToast}
           onOperationComplete={loadUpgrades}
           mode="update"
-          globalState={globalState}
         />
       )}
     </>

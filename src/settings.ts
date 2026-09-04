@@ -1,43 +1,22 @@
-// Winget command settings - persisted via localStorage
+﻿import { WingetSettings } from "./types";
+import { DEFAULT_SETTINGS, STORAGE_KEY } from "./constants/settings";
 
-export interface WingetSettings {
-  // install
-  install_mode: "silent" | "interactive" | "default";
-  install_scope: "user" | "machine" | "default";
-  install_architecture: "x64" | "x86" | "arm64" | "default";
-  install_location: string; // empty = default
-  install_force: boolean;
-  // upgrade
-  upgrade_mode: "silent" | "interactive" | "default";
-  upgrade_include_unknown: boolean;
-  upgrade_force: boolean;
-  // uninstall
-  uninstall_mode: "silent" | "interactive" | "default";
-  uninstall_purge: boolean;
-  // search
-  search_count: number; // 0 = no limit
-  search_exact: boolean;
-  search_source: "winget" | "msstore" | "default";
-}
+/**
+ * Winget user preferences persistence layer.
+ * @module settings
+ */
 
-const STORAGE_KEY = "breeze-winget-settings";
+// Re-export WingetSettings and defaults for 100% backward compatibility
+export type { WingetSettings };
+export { DEFAULT_SETTINGS };
 
-export const DEFAULT_SETTINGS: WingetSettings = {
-  install_mode: "silent",
-  install_scope: "default",
-  install_architecture: "default",
-  install_location: "",
-  install_force: false,
-  upgrade_mode: "silent",
-  upgrade_include_unknown: false,
-  upgrade_force: false,
-  uninstall_mode: "silent",
-  uninstall_purge: true,
-  search_count: 0,
-  search_exact: false,
-  search_source: "default",
-};
-
+/**
+ * Loads persisted winget preferences from browser localStorage.
+ * Automatically merges partial stored configurations with default settings
+ * and falls back safely on corrupted JSON data.
+ *
+ * @returns Complete WingetSettings object
+ */
 export function loadSettings(): WingetSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -45,11 +24,16 @@ export function loadSettings(): WingetSettings {
       return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
     }
   } catch {
-    // ignore
+    // Fall back to defaults on JSON syntax error or unavailable storage
   }
   return { ...DEFAULT_SETTINGS };
 }
 
+/**
+ * Persists winget preferences to localStorage under the key `"breeze-winget-settings"`.
+ *
+ * @param settings - Full WingetSettings object to serialize
+ */
 export function saveSettings(settings: WingetSettings): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
 }

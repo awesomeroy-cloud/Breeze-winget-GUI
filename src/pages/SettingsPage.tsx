@@ -2,6 +2,15 @@ import { useState, useEffect } from "react";
 import { getWingetVersion } from "../api";
 import { WingetSettings, loadSettings, saveSettings, DEFAULT_SETTINGS } from "../settings";
 
+/**
+ * Winget CLI configuration settings management page.
+ * @module pages/SettingsPage
+ */
+
+/**
+ * Settings configuration form for customizing winget parameters including
+ * installation mode, scopes, architecture, purge heuristics, and repository sources.
+ */
 export default function SettingsPage() {
   const [wingetVer, setWingetVer] = useState("检测中...");
   const [settings, setSettings] = useState<WingetSettings>(loadSettings);
@@ -268,7 +277,7 @@ export default function SettingsPage() {
           <h3>关于 Breeze</h3>
           <div className="settings-row">
             <span className="settings-label">版本</span>
-            <span className="settings-value">0.1.0 (Phase 2)</span>
+            <span className="settings-value">0.1.1 (Phase 2)</span>
           </div>
           <div className="settings-row">
             <span className="settings-label">winget 版本</span>

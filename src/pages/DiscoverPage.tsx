@@ -1,55 +1,30 @@
-import { useState, useCallback } from "react";
+﻿import React, { useState, useCallback } from "react";
 import { Package, searchPackages, installPackage } from "../api";
 import PackageCard from "../components/PackageCard";
 import DetailPanel from "../components/DetailPanel";
 import RainbowProgressBar from "../components/RainbowProgressBar";
+import { FEATURED_CATEGORIES } from "../constants/categories";
+import { useToast, useOperations, usePackages } from "../context";
 
-import { GlobalState } from "../App";
+/**
+ * Discover and search page component.
+ * @module pages/DiscoverPage
+ */
 
-interface Props {
-  addToast: (msg: string, type: "success" | "error" | "info") => void;
-  globalState?: GlobalState;
-}
+/**
+ * Renders the package discovery view, featured category recommendations,
+ * and keyword search results without requiring any drilled props.
+ */
+export default function DiscoverPage() {
+  const { addToast } = useToast();
+  const { addOperation, removeOperation, isOperating, progresses } = useOperations();
+  const { installedPackages, refreshInstalled } = usePackages();
 
-const FEATURED_CATEGORIES = [
-  {
-    title: "🛠️ 开发工具",
-    items: [
-      { label: "VS Code", id: "Microsoft.VisualStudioCode" },
-      { label: "Git", id: "Git.Git" },
-      { label: "Node.js", id: "OpenJS.NodeJS" },
-      { label: "Python", id: "Python.Python.3" },
-      { label: "Docker", id: "Docker.DockerDesktop" },
-      { label: "Notepad++", id: "Notepad++.Notepad++" },
-    ],
-  },
-  {
-    title: "🌐 浏览器 & 通讯",
-    items: [
-      { label: "Chrome", id: "Google.Chrome" },
-      { label: "Firefox", id: "Mozilla.Firefox" },
-      { label: "Discord", id: "Discord.Discord" },
-      { label: "Telegram", id: "Telegram.TelegramDesktop" },
-    ],
-  },
-  {
-    title: "🎬 媒体 & 工具",
-    items: [
-      { label: "VLC", id: "VideoLAN.VLC" },
-      { label: "7-Zip", id: "7zip.7zip" },
-      { label: "Steam", id: "Valve.Steam" },
-      { label: "PowerToys", id: "Microsoft.PowerToys" },
-    ],
-  },
-];
-
-export default function DiscoverPage({ addToast, globalState }: Props) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Package[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [selectedPkg, setSelectedPkg] = useState<Package | null>(null);
-  const [installingIds, setInstallingIds] = useState<Set<string>>(new Set());
 
   const handleSearch = useCallback(async () => {
     const q = query.trim();
@@ -66,13 +41,12 @@ export default function DiscoverPage({ addToast, globalState }: Props) {
     }
   }, [query, addToast]);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") handleSearch();
   };
 
   const handleQuickInstall = async (pkg: Package) => {
-    setInstallingIds((prev) => new Set(prev).add(pkg.id));
-    globalState?.addOperation(pkg.id);
+    addOperation(pkg.id);
     try {
       const result = await installPackage(pkg.id);
       if (result.success) {
@@ -83,13 +57,8 @@ export default function DiscoverPage({ addToast, globalState }: Props) {
     } catch (err) {
       addToast(`安装出错: ${err}`, "error");
     } finally {
-      setInstallingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(pkg.id);
-        return next;
-      });
-      globalState?.removeOperation(pkg.id);
-      globalState?.refreshInstalled();
+      removeOperation(pkg.id);
+      await refreshInstalled();
     }
   };
 
@@ -110,7 +79,12 @@ export default function DiscoverPage({ addToast, globalState }: Props) {
           <span className="search-shortcut">Enter</span>
         </div>
         <div className="header-actions">
-          <button className="btn btn-primary btn-sm" onClick={handleSearch} disabled={loading}>
+          <button
+            className="btn btn-primary btn-sm"
+            onClick={handleSearch}
+            disabled={loading}
+            type="button"
+          >
             {loading ? "搜索中..." : "搜索"}
           </button>
         </div>
@@ -134,28 +108,39 @@ export default function DiscoverPage({ addToast, globalState }: Props) {
               <div className="featured-section">
                 {FEATURED_CATEGORIES.map((cat) => (
                   <div key={cat.title} style={{ marginBottom: 18 }}>
-                    <h4 style={{ fontSize: 13, fontWeight: 600, color: "var(--text-tertiary)", marginBottom: 8 }}>
+                    <h4
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: "var(--text-tertiary)",
+                        marginBottom: 8,
+                      }}
+                    >
                       {cat.title}
                     </h4>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                      {cat.items.map((item) => (
-                        <button
-                          key={item.id}
-                          className={`btn ${globalState?.installedPackages.some(p => p.id === item.id) ? "btn-secondary" : "btn-outline"} btn-sm`}
-                          disabled={globalState?.installedPackages.some(p => p.id === item.id) || loading}
-                          onClick={() => {
-                            setLoading(true);
-                            searchPackages(item.id)
-                              .then((pkgs) => {
-                                if (pkgs.length > 0) setSelectedPkg(pkgs[0]);
-                                else addToast("未找到该软件包", "info");
-                              })
-                              .finally(() => setLoading(false));
-                          }}
-                        >
-                          {globalState?.installedPackages.some(p => p.id === item.id) ? `✓ ${item.label}` : item.label}
-                        </button>
-                      ))}
+                      {cat.items.map((item) => {
+                        const isInstalled = installedPackages.some((p) => p.id === item.id);
+                        return (
+                          <button
+                            key={item.id}
+                            className={`btn ${isInstalled ? "btn-secondary" : "btn-outline"} btn-sm`}
+                            disabled={isInstalled || loading}
+                            type="button"
+                            onClick={() => {
+                              setLoading(true);
+                              searchPackages(item.id)
+                                .then((pkgs) => {
+                                  if (pkgs.length > 0) setSelectedPkg(pkgs[0]);
+                                  else addToast("未找到该软件包", "info");
+                                })
+                                .finally(() => setLoading(false));
+                            }}
+                          >
+                            {isInstalled ? `✓ ${item.label}` : item.label}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 ))}
@@ -164,11 +149,19 @@ export default function DiscoverPage({ addToast, globalState }: Props) {
 
             <div className="package-grid">
               {results.map((pkg) => {
-                const isInstalled = globalState?.installedPackages.some(p => p.id === pkg.id);
-                const isInstalling = installingIds.has(pkg.id);
-                const progress = globalState?.progresses[pkg.id] || 0;
+                const isInstalled = installedPackages.some((p) => p.id === pkg.id);
+                const isInstalling = isOperating(pkg.id);
+                const progress = progresses[pkg.id] || 0;
                 return (
-                  <div key={pkg.id} className="package-card-wrapper" style={{ position: "relative", overflow: "hidden", borderRadius: "var(--radius-lg)" }}>
+                  <div
+                    key={pkg.id}
+                    className="package-card-wrapper"
+                    style={{
+                      position: "relative",
+                      overflow: "hidden",
+                      borderRadius: "var(--radius-lg)",
+                    }}
+                  >
                     <RainbowProgressBar active={isInstalling} progress={progress} />
                     <PackageCard
                       pkg={pkg}
@@ -178,6 +171,7 @@ export default function DiscoverPage({ addToast, globalState }: Props) {
                           className={`btn ${isInstalled ? "btn-secondary" : "btn-primary"} btn-sm`}
                           disabled={isInstalling || isInstalled}
                           onClick={() => handleQuickInstall(pkg)}
+                          type="button"
                         >
                           {isInstalling ? "安装中..." : isInstalled ? "已安装" : "安装"}
                         </button>
@@ -195,9 +189,7 @@ export default function DiscoverPage({ addToast, globalState }: Props) {
         <DetailPanel
           pkg={selectedPkg}
           onClose={() => setSelectedPkg(null)}
-          addToast={addToast}
           mode="search"
-          globalState={globalState}
         />
       )}
     </>

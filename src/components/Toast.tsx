@@ -1,32 +1,40 @@
-export interface Toast {
-  id: string;
-  message: string;
-  type: "success" | "error" | "info" | "warning";
-}
+﻿import { Toast, ToastType } from "../types";
+import { TOAST_ICONS } from "../constants/icons";
 
-interface Props {
+/**
+ * Toast notification container component.
+ * @module components/Toast
+ */
+
+export type { Toast, ToastType };
+
+/**
+ * Properties for ToastContainer.
+ */
+export interface ToastContainerProps {
+  /** Array of currently active toast notifications */
   toasts: Toast[];
+  /** Callback to dismiss a toast by its identifier */
   onRemove: (id: string) => void;
 }
 
-const icons: Record<string, string> = {
-  success: "✅",
-  error: "❌",
-  info: "ℹ️",
-};
-
-export default function ToastContainer({ toasts, onRemove }: Props) {
-  if (toasts.length === 0) return null;
+/**
+ * Renders floating toast notifications in the corner of the screen.
+ * Supports "success", "error", "info", and "warning" types.
+ */
+export default function ToastContainer({ toasts, onRemove }: ToastContainerProps) {
+  if (!toasts || toasts.length === 0) return null;
 
   return (
-    <div className="toast-container">
+    <div className="toast-container" role="region" aria-label="Notifications">
       {toasts.map((t) => (
         <div
           key={t.id}
           className={`toast ${t.type}`}
           onClick={() => onRemove(t.id)}
+          role="alert"
         >
-          <span className="toast-icon">{icons[t.type]}</span>
+          <span className="toast-icon">{TOAST_ICONS[t.type] || "ℹ️"}</span>
           <span>{t.message}</span>
         </div>
       ))}
